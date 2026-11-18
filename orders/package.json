@@ -6,9 +6,9 @@
   "main": "index.ts",
   "scripts": {
     "start-server": "../generate-openapi.sh && tsx ./index.ts",
-    "lint": "../generate-openapi.sh && eslint --ext .ts .",
-    "fix-lint": "../generate-openapi.sh && eslint --ext .ts --fix .",
-    "check-types": "../generate-openapi.sh && tsc --noEmit",
+    "lint": "eslint --ext .ts .",
+    "fix-lint": "eslint --ext .ts --fix .",
+    "check-types": "tsc --noEmit",
     "test": "vitest",
     "test:ci": "vitest run"
   },

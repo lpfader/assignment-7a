@@ -3,8 +3,8 @@
 ## What this is
 
 The McMasterful Books backend — Koa + tsoa APIs on MongoDB — plus the deployment
-around it: nginx in front, the storefront and a separate API service for each
-subdomain (books, warehouse, orders) behind it, all on one origin.
+around it: nginx in front, the storefront, a separate API service for each
+subdomain (books, warehouse, orders) and a docs service behind it, all on one origin.
 
 ## Setup
 
@@ -22,7 +22,7 @@ Docker daemon, so `docker compose` works inside it.
 
 ```bash
 ./generate-openapi.sh      # builds build/swagger.json and the client/ SDK
-docker compose up -d       # nginx, front-end, books, warehouse, orders, mongo
+docker compose up -d       # nginx, front-end, books, warehouse, orders, docs, mongo
 ```
 
 Forward port 8080 (VS Code **Ports** tab), then open:
@@ -32,7 +32,7 @@ Forward port 8080 (VS Code **Ports** tab), then open:
 
 Everything is served from port 8080. nginx sends `/` to the front-end,
 `/api/warehouse/` and `/api/fulfil/` to the warehouse API, `/api/order` to the orders
-API, and the rest of `/api/` (books and the docs) to the books API.
+API, `/api/docs` to the docs service, and the rest of `/api/` to the books API.
 
 ## Testing
 
@@ -40,7 +40,15 @@ API, and the rest of `/api/` (books and the docs) to the books API.
 npm run test:ci
 ```
 
-Each API runs its own tests: 31 tests in 13 files (books 6, warehouse 19, orders 6). Each test file starts its own in-memory MongoDB, so the tests don't need `docker compose` running and never touch your real data. The first run also regenerates the OpenAPI client, which takes a few minutes.
+`npm run test:ci` generates the spec, routes and client once (`npm run generate`), then
+runs each project's tests: 32 tests in 14 files (books 6, warehouse 19, orders 6,
+docs 1). Each API test file starts its own in-memory MongoDB, so the tests don't need
+`docker compose` running and never touch your real data. Generating the client takes
+a few minutes. The root `lint` and `check-types` scripts also generate once first.
+
+To run a single project's scripts directly (for example `cd books && npm test`), run
+`./generate-openapi.sh` first whenever you change a controller. The projects no longer
+regenerate on their own, so vitest's watch mode won't pick up controller changes.
 
 ## Warehouse API examples
 
@@ -77,9 +85,10 @@ The repo is a monorepo: each API is its own Node project in a sub-folder, with i
 own `package.json`. The root `package.json` only runs scripts across them.
 
 ```
-books/        the book catalogue, and the Swagger docs (for now)
+books/        the book catalogue
 warehouse/    shelf stock and order fulfilment
 orders/       placing and listing orders
+docs/         the Swagger UI for every API (no database, no routes of its own)
 shared/       the API types every service shares (one copy, so tsoa can combine them)
 adapter/      the storefront's adapter, mounted into the front-end container
 client/       the generated OpenAPI client
@@ -186,3 +195,21 @@ The warehouse API is now its own service, so each API handles only its own subdo
   deep, so nested files like `src/books/*.ts` and root files like `server.ts` were never
   linted. They now use `eslint --ext .ts .`, which lints every TypeScript file. All
   three projects pass it as they are.
+
+### V1.2.3
+
+The Swagger docs are now their own service, which completes Step 1: every subdomain
+and the docs run as separate servers.
+
+- New `docs/` Node project: a Koa app with only the Swagger UI, serving `/docs` and
+  `/docs/spec` from the combined `build/swagger.json`. It has no database. Its new test
+  checks that the spec contains every API's paths, so a service left out of the root
+  `tsoa.json` is caught.
+- books no longer serves the docs, and `koa2-swagger-ui` was removed from its packages.
+- `docker-compose.yaml` adds a `docs` container; `nginx.conf` sends `/api/docs` to it.
+  The rest of `/api/` now only reaches the books API.
+- Code generation runs once: the copies of `vitest-openapi-plugin.ts` are gone, and the
+  project scripts no longer call `generate-openapi.sh`. The root `generate` script runs
+  it, and the root `lint`, `check-types` and `test:ci` run it once before the projects.
+  Before, `test:ci` and `lint` each generated everything once per project.
+- The root `package.json` installs, lints, type-checks and tests all four projects.

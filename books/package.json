@@ -5,9 +5,9 @@
   "main": "index.ts",
   "scripts": {
     "start-server": "../generate-openapi.sh && tsx ./index.ts",
-    "lint": "../generate-openapi.sh && eslint --ext .ts .",
-    "fix-lint": "../generate-openapi.sh && eslint --ext .ts --fix .",
-    "check-types": "../generate-openapi.sh && tsc --noEmit",
+    "lint": "eslint --ext .ts .",
+    "fix-lint": "eslint --ext .ts --fix .",
+    "check-types": "tsc --noEmit",
     "test": "vitest",
     "test:ci": "vitest run"
   },
@@ -21,7 +21,6 @@
     "koa-bodyparser": "^4.4.1",
     "koa-qs": "^3.0.0",
     "koa-zod-router": "^2.2.0",
-    "koa2-swagger-ui": "^5.10.0",
     "mongodb": "^6.5.0",
     "tsoa": "^6.2.0",
     "uuid": "^9.0.1",

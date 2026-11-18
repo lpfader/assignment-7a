@@ -1,0 +1,33 @@
+{
+  "name": "mcmasterful-docs",
+  "version": "1.2.3",
+  "private": true,
+  "description": "The McMasterful Books docs service: the Swagger UI for every API, from the combined spec.",
+  "main": "index.ts",
+  "scripts": {
+    "start-server": "../generate-openapi.sh && tsx ./index.ts",
+    "lint": "eslint --ext .ts .",
+    "fix-lint": "eslint --ext .ts --fix .",
+    "check-types": "tsc --noEmit",
+    "test": "vitest",
+    "test:ci": "vitest run"
+  },
+  "dependencies": {
+    "koa": "2.15.2",
+    "koa2-swagger-ui": "5.10.0"
+  },
+  "devDependencies": {
+    "@types/koa": "2.15.0",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "eslint": "8.57.0",
+    "eslint-config-standard-with-typescript": "43.0.1",
+    "eslint-plugin-import": "2.29.1",
+    "eslint-plugin-n": "16.6.2",
+    "eslint-plugin-promise": "6.1.1",
+    "typescript": "5.4.3",
+    "vitest": "1.4.0"
+  },
+  "overrides": {
+    "typescript": "5.4.3"
+  }
+}
