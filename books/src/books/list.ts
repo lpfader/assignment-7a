@@ -1,4 +1,4 @@
-import { type Book, type Filter } from '../../adapter/assignment-4'
+import { type Book, type Filter } from '../../../adapter/assignment-4'
 import { type BookDatabaseAccessor } from '../database_access'
 
 // Escape regex metacharacters so search text is matched literally. Without

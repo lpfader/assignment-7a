@@ -1,4 +1,4 @@
-# McMasterful Books — BVD 103 Assignment 6
+# McMasterful Books — BVD 103 Assignment 7
 
 ## What this is
 
@@ -12,7 +12,8 @@ You need Docker Desktop, and VS Code with the Dev Containers extension.
 
 1. Open this folder in VS Code.
 2. `Ctrl+Shift+P` → **Dev Containers: Reopen in Container**.
-3. In the container terminal: `npm install`
+3. In the container terminal: `npm install` (from the repo root — this also installs
+   each API project, see **Project layout** below)
 
 The dev container has Node, Java (needed by the OpenAPI generator), and its own
 Docker daemon, so `docker compose` works inside it.
@@ -68,6 +69,18 @@ PUT /api/fulfil/65f1c0ffee1234567890abce
 ```
 
 Response: `201 Created`. A follow-up `GET /api/warehouse/...` now reports `4`.
+
+## Project layout
+
+The repo is a monorepo: each API is its own Node project in a sub-folder, with its
+own `package.json`. The root `package.json` only runs scripts across them.
+
+```
+books/        the API (still serves every route — split up in later versions)
+adapter/      the storefront's adapter, mounted into the front-end container
+client/       the generated OpenAPI client
+generate-openapi.sh, docker-compose.yaml, nginx.conf
+```
 
 ## Two compose files, on purpose
 
@@ -154,3 +167,26 @@ Added tests/api.spec.ts with five HTTP-level tests: deleting a book returns 200 
 
 Removed hello.route.ts and tests/hello.spec.ts placeholder from the template, and regenerated the spec so /hello no longer appears in Swagger.
 
+# Assignment 7
+
+The goal is to split the API into separate services (books, warehouse, orders and a
+docs server) that talk to each other through RabbitMQ events instead of shared data.
+
+## V1.2.0
+
+First step of the split: the existing API moved into its own `books/` folder, so the
+other services can be created beside it. Nothing about how the API behaves changed.
+
+- `git mv` moved the API (`index.ts`, `server.ts`, `src/`, `tests/`, the tsoa, vitest,
+  TypeScript and ESLint configs, `package.json` and `package-lock.json`) into `books/`.
+- The imports of the adapter types and of the generated client gained one more `../`.
+- The new root `package.json` runs each script inside `books/`, and its `postinstall`
+  runs `npm install` there, so `npm install` and the CI workflow work unchanged from
+  the root.
+- `generate-openapi.sh` now changes into `books/` itself, so it works from any folder.
+  It still writes the client to the root `client/` folder.
+- `docker-compose.yaml` starts the three API copies in `/app/books`. The whole repo is
+  still mounted so the API can reach `adapter/`.
+
+Checked in a `node:20` container: tsoa generates the routes, `tsc` and ESLint pass, and
+all 29 tests pass.

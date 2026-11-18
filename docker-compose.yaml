@@ -1,7 +1,8 @@
 # Extension field: the three API replicas are identical, so define them once.
 x-server: &server
   image: node:20
-  working_dir: /app
+  # The whole repo is mounted so the API can still reach ../adapter for its types.
+  working_dir: /app/books
   volumes:
     - ./:/app
   command: npx -y tsx ./index.ts

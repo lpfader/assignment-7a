@@ -9,7 +9,7 @@ async function generateOpenApi (): Promise<void> {
   try {
     console.log('Generating OpenAPI')
     // we're calling our shell script here - but we don't really care about it's return values
-    await exec('./generate-openapi.sh')
+    await exec('../generate-openapi.sh')
   } catch (e) {
     console.error('failed to generate open API', e)
   }
