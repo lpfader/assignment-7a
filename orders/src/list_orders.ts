@@ -1,8 +1,8 @@
-import { type BookID, type OrderId } from '../../../adapter/assignment-4'
-import { InMemoryWarehouse, type WarehouseData } from './warehouse_data'
+import { type BookID, type OrderId } from '../../adapter/assignment-4'
+import { InMemoryOrders, type OrdersData } from './orders_data'
 
 export async function listOrders (
-  data: WarehouseData
+  data: OrdersData
 ): Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>> {
   return await data.listOrders()
 }
@@ -11,7 +11,7 @@ if (import.meta.vitest !== undefined) {
   const { test, expect } = import.meta.vitest
 
   test('if orders exist they can be listed', async () => {
-    const data = new InMemoryWarehouse({ orders: { 'my-order': { book: 2 } } })
+    const data = new InMemoryOrders({ orders: { 'my-order': { book: 2 } } })
 
     const orders = await listOrders(data)
 

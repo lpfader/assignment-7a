@@ -1,15 +1,15 @@
 {
   "name": "mcmasterful-books",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "McMasterful Books monorepo. Each API is its own Node project in a sub-folder; this root only runs scripts across them.",
   "scripts": {
-    "postinstall": "npm --prefix books install",
+    "postinstall": "npm --prefix books install && npm --prefix orders install",
     "start-server": "npm --prefix books run start-server",
-    "lint": "npm --prefix books run lint",
-    "fix-lint": "npm --prefix books run fix-lint",
-    "check-types": "npm --prefix books run check-types",
-    "test": "npm --prefix books run test",
-    "test:ci": "npm --prefix books run test:ci"
+    "lint": "npm --prefix books run lint && npm --prefix orders run lint",
+    "fix-lint": "npm --prefix books run fix-lint && npm --prefix orders run fix-lint",
+    "check-types": "npm --prefix books run check-types && npm --prefix orders run check-types",
+    "test": "npm --prefix books run test:ci && npm --prefix orders run test:ci",
+    "test:ci": "npm --prefix books run test:ci && npm --prefix orders run test:ci"
   }
 }

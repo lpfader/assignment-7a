@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import setup, { type ServerTestContext } from './run_server'
 import { generateId, seedBookDatabase } from '../database_test_utilities'
-import { type BookID, type Book } from '../src/documented_types'
+import { type BookID, type Book } from '../../shared/documented_types'
 import { ObjectId } from 'mongodb'
 
 setup()
@@ -45,22 +45,14 @@ test<ServerTestContext>('placing copies on a shelf makes them show up in the boo
   expect(await info.json()).toEqual({ shelf_1: 5 })
 })
 
-test<ServerTestContext>('placing then fulfilling an order takes the copies off the shelf', async ({ address }) => {
+test<ServerTestContext>('fulfilling an order takes the copies off the shelf', async ({ address, state }) => {
   const bookId = generateId<BookID>()
 
   await fetch(`${address}/warehouse/${bookId}/shelf_1/5`, { method: 'PUT' })
 
-  const placedOrder = await fetch(`${address}/order`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ order: [bookId] })
-  })
-
-  expect(placedOrder.status).toEqual(201)
-
-  const orderId = await placedOrder.text()
-
-  expect(orderId.length).toBeGreaterThan(0)
+  // The /order routes live in the orders API now, so the order is added straight
+  // into the shared database rather than through POST /order.
+  const orderId = await state.warehouse.placeOrder({ [bookId]: 1 })
 
   const fulfilled = await fetch(`${address}/fulfil/${orderId}`, {
     method: 'PUT',
@@ -74,10 +66,7 @@ test<ServerTestContext>('placing then fulfilling an order takes the copies off t
 
   expect(await info.json()).toEqual({ shelf_1: 4 })
 
-  const orderList = await fetch(`${address}/order`)
-  const orders = (await orderList.json()) as Array<{ orderId: string }>
-
-  expect(orders.some((order) => order.orderId === orderId)).toBe(false)
+  expect(await state.warehouse.getOrder(orderId)).toBe(false)
 })
 
 test<ServerTestContext>('fulfilling an order that does not exist is an error', async ({ address }) => {

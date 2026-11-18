@@ -30,8 +30,8 @@ Forward port 8080 (VS Code **Ports** tab), then open:
 - http://localhost:8080 — the storefront
 - http://localhost:8080/api/docs — Swagger UI
 
-Everything is served from port 8080. nginx sends `/` to the front-end and `/api/`
-to one of the three API servers, in turn.
+Everything is served from port 8080. nginx sends `/` to the front-end,
+`/api/order` to the orders API, and the rest of `/api/` to the books API.
 
 ## Testing
 
@@ -76,11 +76,17 @@ The repo is a monorepo: each API is its own Node project in a sub-folder, with i
 own `package.json`. The root `package.json` only runs scripts across them.
 
 ```
-books/        the API (still serves every route — split up in later versions)
+books/        books, warehouse shelves and fulfilment, and the Swagger docs (for now)
+orders/       placing and listing orders
+shared/       the API types every service shares (one copy, so tsoa can combine them)
 adapter/      the storefront's adapter, mounted into the front-end container
 client/       the generated OpenAPI client
+tsoa.json     builds one combined build/swagger.json from every API's controllers
 generate-openapi.sh, docker-compose.yaml, nginx.conf
 ```
+
+`./generate-openapi.sh` builds the combined `build/swagger.json`, then each API's own
+`build/routes.ts` (so each API registers only its own routes), then the client.
 
 ## Two compose files, on purpose
 
@@ -190,3 +196,35 @@ other services can be created beside it. Nothing about how the API behaves chang
 
 Checked in a `node:20` container: tsoa generates the routes, `tsc` and ESLint pass, and
 all 29 tests pass.
+
+## V1.2.1
+
+The orders API is now its own service, and the Swagger docs come from one combined spec.
+
+- New `orders/` Node project with its own `package.json`, server, tsoa config and tests.
+  `place_order.ts` and `list_orders.ts` moved there with `git mv`; the `/order` routes
+  moved out of `books/src/warehouse/warehouse.route.ts` into `orders/src/orders.route.ts`.
+- `orders/src/orders_data.ts` holds the order half of the warehouse data layer. For
+  now it uses the same `mcmasterful-warehouse` database as books, because the fulfil
+  route in books still reads and removes orders. Step 3 replaces that with events.
+- Combined swagger: the new root `tsoa.json` builds one `build/swagger.json` from every
+  API's controllers, while each API generates only its own routes. Books serves the
+  docs from that combined file, so `/order` still appears in Swagger.
+- tsoa refuses two different definitions of the same type name in one spec, so
+  `documented_types.ts` moved to `shared/` and both APIs import it.
+- orders pins its packages (including tsoa 6.2.0 and TypeScript 5.4.3) to the versions
+  books is locked to. A fresh install pulled tsoa 6.6.0, which rejects the existing
+  `@returns {OrderId}` comments, so both APIs now build the same way.
+- `docker-compose.yaml` runs one `books` and one `orders` container. The three
+  round-robin copies (`yi`, `er`, `san`) are gone, since the assignment doesn't need them;
+  adding a copy back is one more `server` line in that API's nginx upstream.
+- `nginx.conf` has one upstream per API and sends `/api/order` to orders.
+- The root `package.json` installs, lints, type-checks and tests both projects.
+- books' fulfil test now adds its order straight into the database instead of calling
+  `POST /order`, and orders has a new test for placing and listing an order.
+
+Checked in a `node:20` container: spec and routes generate, `tsc` and ESLint pass for
+both, and all 31 tests pass (25 books, 6 orders). Checked through nginx with
+`docker compose up`: add a book, shelve it, place an order (answered by the orders
+container), list it, fulfil it (stock drops, order disappears), Swagger lists all six
+paths, and the storefront loads.

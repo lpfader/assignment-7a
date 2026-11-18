@@ -1,3 +1,7 @@
+// Shared by every API. tsoa builds one combined swagger.json, and it refuses two
+// different definitions of the same type name, so these types live in one place.
+// Every import of this file is type-only, so nothing here exists at runtime.
+
 /**
  * A unique identifier for a particular book
  */
