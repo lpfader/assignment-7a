@@ -31,7 +31,8 @@ Forward port 8080 (VS Code **Ports** tab), then open:
 - http://localhost:8080/api/docs — Swagger UI
 
 Everything is served from port 8080. nginx sends `/` to the front-end,
-`/api/order` to the orders API, and the rest of `/api/` to the books API.
+`/api/warehouse/` and `/api/fulfil/` to the warehouse API, `/api/order` to the orders
+API, and the rest of `/api/` (books and the docs) to the books API.
 
 ## Testing
 
@@ -76,7 +77,8 @@ The repo is a monorepo: each API is its own Node project in a sub-folder, with i
 own `package.json`. The root `package.json` only runs scripts across them.
 
 ```
-books/        books, warehouse shelves and fulfilment, and the Swagger docs (for now)
+books/        the book catalogue, and the Swagger docs (for now)
+warehouse/    shelf stock and order fulfilment
 orders/       placing and listing orders
 shared/       the API types every service shares (one copy, so tsoa can combine them)
 adapter/      the storefront's adapter, mounted into the front-end container
@@ -228,3 +230,26 @@ both, and all 31 tests pass (25 books, 6 orders). Checked through nginx with
 `docker compose up`: add a book, shelve it, place an order (answered by the orders
 container), list it, fulfil it (stock drops, order disappears), Swagger lists all six
 paths, and the storefront loads.
+
+## V1.2.2
+
+The warehouse API is now its own service, so each API handles only its own subdomain.
+
+- New `warehouse/` Node project. `warehouse.route.ts` (the shelf and fulfil routes),
+  `place_on_shelf.ts`, `get_book_info.ts`, `fulfil_order.ts`, `warehouse_data.ts` and
+  `warehouse_database.ts` moved from `books/src/warehouse/` with `git mv`, unchanged
+  apart from import paths.
+- The warehouse still shares the `mcmasterful-warehouse` database with orders, because
+  fulfilment reads and removes orders. Step 3 replaces that with events.
+- books now only connects to `mcmasterful-books`. Its test helpers keep only the books
+  seeding, and the warehouse got its own copy with the warehouse seeding.
+- The three warehouse API tests moved from `books/tests/api.spec.ts` to
+  `warehouse/tests/warehouse.spec.ts`. Still 31 tests: 6 books, 19 warehouse, 6 orders.
+- warehouse is pinned to the same package versions as books and orders.
+- Root `tsoa.json`, `generate-openapi.sh` and `package.json` now include warehouse.
+- `docker-compose.yaml` adds a `warehouse` container; `nginx.conf` sends `/api/warehouse/`
+  and `/api/fulfil/` to it.
+- Lint fix: the lint scripts used `eslint ./**/*.ts`. In `sh`, `**` only goes one folder
+  deep, so nested files like `src/books/*.ts` and root files like `server.ts` were never
+  linted. They now use `eslint --ext .ts .`, which lints every TypeScript file. All
+  three projects pass it as they are.

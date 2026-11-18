@@ -1,5 +1,9 @@
 {
-  "controllerPathGlobs": ["books/src/**/*.route.ts", "orders/src/**/*.route.ts"],
+  "controllerPathGlobs": [
+    "books/src/**/*.route.ts",
+    "warehouse/src/**/*.route.ts",
+    "orders/src/**/*.route.ts"
+  ],
   "noImplicitAdditionalProperties": "throw-on-extras",
   "spec": {
     "outputDirectory": "build",

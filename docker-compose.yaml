@@ -19,6 +19,7 @@ services:
     depends_on:
       - front-end
       - books
+      - warehouse
       - orders
 
   front-end:
@@ -26,10 +27,15 @@ services:
     volumes:
       - ./adapter:/source/adapter
 
-  # Books, warehouse shelves and fulfilment (and the Swagger docs, for now).
+  # The book catalogue (and the Swagger docs, for now).
   books:
     <<: *api
     working_dir: /app/books
+
+  # Shelf stock and order fulfilment.
+  warehouse:
+    <<: *api
+    working_dir: /app/warehouse
 
   # Placing and listing orders.
   orders:

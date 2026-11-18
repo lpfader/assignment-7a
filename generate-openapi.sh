@@ -9,6 +9,7 @@ cd "$(dirname "$0")"
 
 # Each API registers only its own routes, from its own tsoa.json.
 (cd books && npx tsoa routes)
+(cd warehouse && npx tsoa routes)
 (cd orders && npx tsoa routes)
 
 (cd books && npx @openapitools/openapi-generator-cli generate -i ../build/swagger.json -o ../client -g typescript-fetch)

@@ -1,6 +1,6 @@
 import { BodyProp, Controller, Get, Path, Put, Route, SuccessResponse, Request } from 'tsoa'
 import { getBookInfo } from './get_book_info'
-import { type ShelfId, type BookID, type OrderId, type FulfilledBooks } from '../../../shared/documented_types'
+import { type ShelfId, type BookID, type OrderId, type FulfilledBooks } from '../../shared/documented_types'
 import { placeBooksOnShelf } from './place_on_shelf'
 import { fulfilOrder } from './fulfil_order'
 import { type ParameterizedContext, type DefaultContext, type Request as KoaRequest } from 'koa'

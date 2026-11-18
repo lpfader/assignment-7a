@@ -32,55 +32,6 @@ test<ServerTestContext>('deleting a book removes it, and deleting it again is a 
   expect(second.status).toEqual(404)
 })
 
-test<ServerTestContext>('placing copies on a shelf makes them show up in the book info', async ({ address }) => {
-  const bookId = generateId<BookID>()
-
-  const placed = await fetch(`${address}/warehouse/${bookId}/shelf_1/5`, { method: 'PUT' })
-
-  expect(placed.status).toEqual(201)
-
-  const info = await fetch(`${address}/warehouse/${bookId}`)
-
-  expect(info.status).toEqual(200)
-  expect(await info.json()).toEqual({ shelf_1: 5 })
-})
-
-test<ServerTestContext>('fulfilling an order takes the copies off the shelf', async ({ address, state }) => {
-  const bookId = generateId<BookID>()
-
-  await fetch(`${address}/warehouse/${bookId}/shelf_1/5`, { method: 'PUT' })
-
-  // The /order routes live in the orders API now, so the order is added straight
-  // into the shared database rather than through POST /order.
-  const orderId = await state.warehouse.placeOrder({ [bookId]: 1 })
-
-  const fulfilled = await fetch(`${address}/fulfil/${orderId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ booksFulfilled: [{ book: bookId, shelf: 'shelf_1', numberOfBooks: 1 }] })
-  })
-
-  expect(fulfilled.status).toEqual(201)
-
-  const info = await fetch(`${address}/warehouse/${bookId}`)
-
-  expect(await info.json()).toEqual({ shelf_1: 4 })
-
-  expect(await state.warehouse.getOrder(orderId)).toBe(false)
-})
-
-test<ServerTestContext>('fulfilling an order that does not exist is an error', async ({ address }) => {
-  const missingOrder = generateId<BookID>()
-
-  const result = await fetch(`${address}/fulfil/${missingOrder}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ booksFulfilled: [] })
-  })
-
-  expect(result.status).toEqual(500)
-})
-
 test<ServerTestContext>('a book with unexpected extra fields is rejected', async ({ address }) => {
   const result = await fetch(`${address}/books`, {
     method: 'POST',
