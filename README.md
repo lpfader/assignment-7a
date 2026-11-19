@@ -2,9 +2,81 @@
 
 ## What this is
 
-The McMasterful Books backend — Koa + tsoa APIs on MongoDB — plus the deployment
-around it: nginx in front, the storefront, a separate API service for each
-subdomain (books, warehouse, orders) and a docs service behind it, all on one origin.
+The McMasterful Books backend, split into a separate service for each subdomain
+(books, warehouse, orders), each with its own database, talking to each other only
+through RabbitMQ events. Koa + tsoa APIs on MongoDB, with nginx in front of the
+storefront, the APIs and a Swagger docs service, all on one origin.
+
+## Architecture
+
+```
+                         browser
+                            |
+             +-------- nginx :8080 --------+
+             | /              -> front-end |
+             | /api/books     -> books     |
+             | /api/warehouse -> warehouse |
+             | /api/fulfil    -> warehouse |
+             | /api/order     -> orders    |
+             | /api/docs      -> docs      |
+             +-----------------------------+
+        books           warehouse           orders          docs
+          |                 |                  |        (Swagger UI only)
+        mongo          warehouse-db        orders-db
+          |                 |                  |
+          +----------- RabbitMQ (events) ------+
+```
+
+Each API has its **own database server**, and no service reads another's database or
+calls another's API to do its job. When a service needs another service's data, it
+keeps its **own copy**, kept up to date by **events** sent through RabbitMQ.
+
+| Service | Owns | Database server | Keeps a copy of | Queue |
+|---|---|---|---|---|
+| books | the catalogue | `mongo` | each book's total stock | `books` |
+| warehouse | shelf stock, fulfilment | `warehouse-db` | book names; open orders | `warehouse` |
+| orders | placing and listing orders | `orders-db` | the valid book ids | `orders` |
+| docs | the Swagger UI | none | none | none |
+
+### Events
+
+Every event goes through one RabbitMQ topic exchange, `mcmasterful-books`, keyed by its
+name. Each service has its own durable queue, bound to only the events it listens to,
+so events sent while a service is down wait in its queue until it is back. A message is
+only removed after it has been handled. The events are defined once, in
+`shared/events.ts`.
+
+| Event | Sent by | When | Contains | Listened to by |
+|---|---|---|---|---|
+| `BookAdded` | books | a book is created | the book, with its id | warehouse (saves the name), orders (saves the id) |
+| `BookUpdated` | books | a book is edited | the book | warehouse (updates the name) |
+| `BookRemoved` | books | a book is deleted | the id | warehouse and orders (forget it) |
+| `BookStocked` | warehouse | copies go on a shelf, or come off for an order | the book's new total stock | books (shows it as `stock`) |
+| `OrderPlaced` | orders | an order is placed | order id, copies of each book | warehouse (keeps it for fulfilment) |
+| `OrderFulfilled` | warehouse | an order is fulfilled | the order id | orders (removes it) |
+
+What the copies are used for:
+
+- **books** shows `stock` in the book list and book details.
+- **warehouse** refuses to stock a book it doesn't know (`404 unknown book`), and
+  fulfils orders from its own copy.
+- **orders** refuses orders for books it doesn't know (`400 unknown book`).
+
+### Design choices
+
+- **Events carry new values, not changes.** `BookStocked` says "the total is now 7",
+  not "add 3", and the copies are saved with upserts, so handling an event twice
+  still gives the right result.
+- **Events are sent only after the change is saved,** so a failed request never
+  announces anything.
+- **Initial sync.** The first time a service starts with an empty copy, it asks the
+  other API for all of it once: warehouse and orders fetch the book list from books,
+  and books fetches the stock totals from the warehouse (`GET /warehouse`). After that,
+  only events keep the copies up to date. There is deliberately no sync for the
+  warehouse's open orders: their events wait in its queue anyway, and a sync after a
+  restart could bring back an order that was just fulfilled.
+- **Eventually consistent.** The copies catch up within milliseconds, not instantly.
+  For example, an order can still be listed for a moment after it is fulfilled.
 
 ## Setup
 
@@ -40,6 +112,28 @@ API, `/api/docs` to the docs service, and the rest of `/api/` to the books API.
 
 The APIs wait for RabbitMQ to pass its health check before they start, so the first
 `docker compose up` takes 10-20 seconds longer than the rest of the stack.
+
+## See it working
+
+With the stack running, in Swagger (http://localhost:8080/api/docs, **Try it out**) or
+with `curl`:
+
+1. `POST /api/books` with a book. Note the `id` it returns.
+2. `PUT /api/warehouse/{id}/shelf_1/5`, then `POST /api/books/list` with `[]`: the
+   book shows `"stock": 5`. books learned that from the warehouse's `BookStocked`.
+3. `POST /api/order` with `{ "order": ["{id}", "{id}"] }`. Note the order id.
+4. `PUT /api/fulfil/{order}` with
+   `{ "booksFulfilled": [ { "book": "{id}", "shelf": "shelf_1", "numberOfBooks": 2 } ] }`.
+   `GET /api/order` no longer lists it (`OrderFulfilled`), and the book list shows
+   `"stock": 3`.
+5. In the RabbitMQ dashboard (http://localhost:15672), **Queues** shows each
+   service's messages being handled, and **Exchanges -> mcmasterful-books** shows the
+   bindings.
+
+To see that the services don't need each other to be running: `docker compose stop
+warehouse`, place an order (step 3), `docker compose start warehouse`, wait about 30
+seconds, and fulfil it (step 4). The `OrderPlaced` event waited in the warehouse's
+queue.
 
 ## Testing
 
@@ -109,8 +203,11 @@ books/        the book catalogue
 warehouse/    shelf stock and order fulfilment
 orders/       placing and listing orders
 docs/         the Swagger UI for every API (no database, no routes of its own)
-shared/       code every service shares: the API types (one copy, so tsoa can combine
-              them), the event definitions, and the event buses
+shared/       code every service shares (no package.json; checked by books' scripts):
+                documented_types.ts  the API types (one copy, so tsoa can combine them)
+                events.ts            the events, the EventBus interface, the fake bus
+                rabbit_event_bus.ts  the RabbitMQ event bus
+                initial_sync.ts      the one-time startup sync
 adapter/      the storefront's adapter, mounted into the front-end container
 client/       the generated OpenAPI client
 tsoa.json     builds one combined build/swagger.json from every API's controllers
@@ -133,6 +230,8 @@ They do different jobs. Only the root file is what the site runs from.
   empty storefront until books are added through the UI or `POST /api/books`.
 - Book search is a `$regex` scan rather than an indexed search. Correct, but it
   gets slower as the catalogue grows.
+- `GET /api/books/{id}` and `DELETE /api/books/{id}` work but are not in Swagger:
+  the course template registers them on a separate (zod) router that tsoa can't see.
 - The databases have no Docker volumes: their data lives inside the `mongo`,
   `warehouse-db` and `orders-db` containers. `docker compose stop` keeps it;
   `docker compose down` deletes it.
@@ -388,3 +487,22 @@ With the warehouse stopped, an order was placed; once the warehouse was back it 
 fulfil that order, so the event had waited in its queue. Each Mongo server holds only
 its own API's collections, and the only other services named in the APIs' code are the
 two initial-sync requests.
+
+### V1.4.4
+
+Wrap-up. Step 3, and with it the assignment, is complete.
+
+- README: new **Architecture** section (diagram, services and their copies, the event
+  table, design choices) and **See it working** walkthrough; the overview, project
+  layout and known limitations are updated.
+- `books/package.json` is renamed from the template's `assignment-template` to
+  `mcmasterful-books-api`, matching the other projects.
+- The root `start-server` script is removed: it only started books, and everything
+  runs through `docker compose`.
+
+Checked with `docker compose up`, using the storefront adapter's requests through
+nginx: add a book, filter and look it up (`stock` 0), put 4 and 2 copies on two shelves
+(`stock` 6), order 3, list orders, fulfil from both shelves (order gone, shelves 2 and 1,
+`stock` 3). Unknown books give `400` / `404 unknown book`, and a second fulfilment
+fails. Swagger lists all eight tsoa routes under `/api` with the new responses and the
+`stock` field. RabbitMQ showed every event handled and none waiting.

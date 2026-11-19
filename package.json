@@ -1,12 +1,11 @@
 {
   "name": "mcmasterful-books",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": true,
   "description": "McMasterful Books monorepo. Each API is its own Node project in a sub-folder; this root only runs scripts across them.",
   "scripts": {
     "postinstall": "npm --prefix books install && npm --prefix warehouse install && npm --prefix orders install && npm --prefix docs install",
     "generate": "./generate-openapi.sh",
-    "start-server": "npm --prefix books run start-server",
     "lint": "npm run generate && npm --prefix books run lint && npm --prefix warehouse run lint && npm --prefix orders run lint && npm --prefix docs run lint",
     "fix-lint": "npm run generate && npm --prefix books run fix-lint && npm --prefix warehouse run fix-lint && npm --prefix orders run fix-lint && npm --prefix docs run fix-lint",
     "check-types": "npm run generate && npm --prefix books run check-types && npm --prefix warehouse run check-types && npm --prefix orders run check-types && npm --prefix docs run check-types",

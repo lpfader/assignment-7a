@@ -1,7 +1,7 @@
 {
-  "name": "assignment-template",
-  "version": "1.0.0",
-  "description": "This is a template repository for the first assignment in BVD 103 at McMaster Continuing Education.",
+  "name": "mcmasterful-books-api",
+  "version": "1.4.4",
+  "description": "The McMasterful Books books API: the book catalogue and its copy of each book's stock.",
   "main": "index.ts",
   "scripts": {
     "start-server": "../generate-openapi.sh && tsx ./index.ts",
