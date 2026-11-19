@@ -8,25 +8,25 @@ import KoaRouter from '@koa/router'
 import bodyParser from 'koa-bodyparser'
 import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { type AppBookDatabaseState, getBookDatabase } from './src/database_access'
-import { type AppBrokerState, type Broker } from './src/messaging'
+import { type AppEventsState, type EventBus, InMemoryEventBus } from '../shared/events'
 
 export default async function (
   port?: number,
   randomizeDbs?: boolean,
-  broker?: Broker
+  events: EventBus = new InMemoryEventBus()
 ): Promise<{
     server: Server<typeof IncomingMessage, typeof ServerResponse>
-    state: AppBookDatabaseState & AppBrokerState
+    state: AppBookDatabaseState & AppEventsState
   }> {
   const bookDb = getBookDatabase(randomizeDbs === true ? undefined : 'mcmasterful-books')
 
-  const state: AppBookDatabaseState & AppBrokerState = {
-    // Kept for Step 3, where the API publishes and subscribes to events.
-    broker,
+  const state: AppBookDatabaseState & AppEventsState = {
+    // RabbitMQ in the running stack; the in-memory fake in the tests.
+    events,
     books: bookDb
   }
 
-  const app = new Koa<AppBookDatabaseState & AppBrokerState, Koa.DefaultContext>()
+  const app = new Koa<AppBookDatabaseState & AppEventsState, Koa.DefaultContext>()
 
   app.use(async (ctx, next): Promise<void> => {
     ctx.state = state
@@ -53,6 +53,9 @@ export default async function (
   app.use(koaRouter.routes())
 
   // The Swagger docs moved to the docs service in V1.2.3 (docs/server.ts).
+  // Event subscriptions are registered above this line; then start receiving.
+  await events.start()
+
   return {
     server: app.listen(port, () => {
       console.log('listening')

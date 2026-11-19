@@ -30,7 +30,8 @@ Forward port 8080 (VS Code **Ports** tab), then open:
 - http://localhost:8080 — the storefront
 - http://localhost:8080/api/docs — Swagger UI
 - http://localhost:15672 — RabbitMQ dashboard (user `guest`, password `guest`; forward
-  port 15672 too). The **Connections** tab shows one connection per API.
+  port 15672 too). The **Connections** tab shows one connection per API, and the
+  **Queues** tab one queue per API.
 
 Everything is served from port 8080. nginx sends `/` to the front-end,
 `/api/warehouse/` and `/api/fulfil/` to the warehouse API, `/api/order` to the orders
@@ -46,7 +47,7 @@ npm run test:ci
 ```
 
 `npm run test:ci` generates the spec, routes and client once (`npm run generate`), then
-runs each project's tests: 32 tests in 14 files (books 6, warehouse 19, orders 6,
+runs each project's tests: 37 tests in 15 files (books 11, warehouse 19, orders 6,
 docs 1). Each API test file starts its own in-memory MongoDB, so the tests don't need
 `docker compose` running and never touch your real data. Generating the client takes
 a few minutes. The root `lint` and `check-types` scripts also generate once first.
@@ -94,7 +95,8 @@ books/        the book catalogue
 warehouse/    shelf stock and order fulfilment
 orders/       placing and listing orders
 docs/         the Swagger UI for every API (no database, no routes of its own)
-shared/       the API types every service shares (one copy, so tsoa can combine them)
+shared/       code every service shares: the API types (one copy, so tsoa can combine
+              them), the event definitions, and the event buses
 adapter/      the storefront's adapter, mounted into the front-end container
 client/       the generated OpenAPI client
 tsoa.json     builds one combined build/swagger.json from every API's controllers
@@ -241,3 +243,29 @@ Checked with `docker compose up`: RabbitMQ becomes healthy, each API logs
 `connected to RabbitMQ`, the dashboard shows three connections with one channel each and
 the durable `mcmasterful-books` topic exchange, and the website, Swagger and the
 book, shelf, order and fulfil flow all still work.
+
+### V1.4.0
+
+Step 3 begins. This version builds the event bus every service will use; no events are
+sent yet, so the APIs behave exactly as before.
+
+- `shared/events.ts` defines every event once (`BookAdded`, `BookUpdated`,
+  `BookRemoved`, `BookStocked`, `OrderPlaced`, `OrderFulfilled`) and what each one
+  contains, so the sender and the listeners always agree. Events carry new values (for
+  example the new stock total), never changes like "add 3", so handling an event twice
+  still gives the right result.
+- `shared/events.ts` also has the `EventBus` interface and `InMemoryEventBus`, the fake
+  bus for tests: no RabbitMQ, events are handled straight away, and it records
+  everything published so a test can check what a service sent.
+- `shared/rabbit_event_bus.ts` is the RabbitMQ version. Every event goes through the
+  `mcmasterful-books` topic exchange, keyed by its name. Each service has its own
+  durable queue, bound to only the events it subscribes to, so events sent while a
+  service is down wait for it. A message is only removed after it is handled; a failed
+  one is retried once, then logged and dropped so it can't block the queue.
+- Each API's `src/messaging.ts` now returns an event bus on its own queue, `index.ts`
+  passes it to `server()`, and `server()` starts receiving events once its
+  subscriptions are set up. The tests get the in-memory bus by default.
+- `books/tests/event_bus.spec.ts` tests both buses; the RabbitMQ one against a fake
+  channel, so CI still needs no RabbitMQ.
+- books' `lint` script now also lints `shared/`, which no project linted before. It
+  found three small type issues in the new files, which are fixed.

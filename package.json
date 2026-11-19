@@ -1,6 +1,6 @@
 {
   "name": "mcmasterful-books",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "McMasterful Books monorepo. Each API is its own Node project in a sub-folder; this root only runs scripts across them.",
   "scripts": {
