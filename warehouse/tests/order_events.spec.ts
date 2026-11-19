@@ -51,7 +51,8 @@ test<ServerTestContext>('a failed fulfilment keeps the order and publishes no Or
 
   const response = await fulfil(address, orderId, book, 1)
 
-  expect(response.status).toEqual(500)
+  expect(response.status).toEqual(400)
+  expect(await response.text()).toEqual('incorrect number of books')
   expect(events.publishedOf('OrderFulfilled')).toEqual([])
   expect(await state.warehouse.getOrder(orderId)).toEqual({ [book]: 2 })
 })
@@ -62,7 +63,7 @@ test<ServerTestContext>('an order can only be fulfilled once', async ({ address,
   await events.publish('OrderPlaced', { orderId, books: { [book]: 1 } })
 
   expect((await fulfil(address, orderId, book, 1)).status).toEqual(201)
-  expect((await fulfil(address, orderId, book, 1)).status).toEqual(500)
+  expect((await fulfil(address, orderId, book, 1)).status).toEqual(404)
   expect(events.publishedOf('OrderFulfilled')).toHaveLength(1)
   expect(await (await fetch(`${address}/warehouse/${book}`)).json()).toEqual({ shelf_1: 4 })
 })

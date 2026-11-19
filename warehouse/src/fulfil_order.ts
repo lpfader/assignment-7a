@@ -1,6 +1,16 @@
 import { type ShelfId, type BookID, type OrderId } from '../../adapter/assignment-4'
 import { InMemoryWarehouse, type WarehouseData } from './warehouse_data'
 
+// The order doesn't exist, or was already fulfilled: the route answers 404.
+export class NoSuchOrderError extends Error {
+  constructor () {
+    super('no such order')
+  }
+}
+
+// The request doesn't match the order or the shelves: the route answers 400.
+export class InvalidFulfilmentError extends Error {}
+
 export async function fulfilOrder (
   data: WarehouseData,
   orderId: OrderId,
@@ -8,20 +18,20 @@ export async function fulfilOrder (
 ): Promise<void> {
   const order = await data.getOrder(orderId)
   if (order === false) {
-    throw new Error('no such order')
+    throw new NoSuchOrderError()
   }
 
   const removedCount: Record<BookID, number> = {}
   for (const { book, numberOfBooks } of booksFulfilled) {
     if (!(book in order)) {
-      throw new Error('one of the books is not in the order')
+      throw new InvalidFulfilmentError('one of the books is not in the order')
     }
     removedCount[book] = numberOfBooks + (removedCount[book] ?? 0)
   }
 
   for (const book of Object.keys(order)) {
     if (removedCount[book] !== order[book]) {
-      throw new Error('incorrect number of books')
+      throw new InvalidFulfilmentError('incorrect number of books')
     }
   }
 
@@ -30,7 +40,7 @@ export async function fulfilOrder (
       const currentCopiesOnShelf = await data.getCopiesOnShelf(book, shelf)
       const newCopiesOnShelf = currentCopiesOnShelf - numberOfBooks
       if (newCopiesOnShelf < 0) {
-        throw new Error('not enough copies on given shelves')
+        throw new InvalidFulfilmentError('not enough copies on given shelves')
       }
       return { book, shelf, numberOfBooks: newCopiesOnShelf }
     })

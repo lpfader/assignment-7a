@@ -2,7 +2,7 @@ import { BodyProp, Controller, Get, Path, Put, Route, SuccessResponse, Request, 
 import { getBookInfo } from './get_book_info'
 import { type ShelfId, type BookID, type OrderId, type FulfilledBooks } from '../../shared/documented_types'
 import { placeBooksOnShelf, UnknownBookError } from './place_on_shelf'
-import { fulfilOrder } from './fulfil_order'
+import { fulfilOrder, InvalidFulfilmentError, NoSuchOrderError } from './fulfil_order'
 import { type ParameterizedContext, type DefaultContext, type Request as KoaRequest } from 'koa'
 import { type AppWarehouseDatabaseState } from './warehouse_database'
 import { type AppEventsState } from '../../shared/events'
@@ -79,21 +79,33 @@ export class FulfilOrderRoutes extends Controller {
   public async fulfilOrder (
     @Path() order: OrderId,
       @BodyProp('booksFulfilled') booksFulfilled: FulfilledBooks,
-      @Request() request: KoaRequest
+      @Request() request: KoaRequest,
+      @Res() noSuchOrder: TsoaResponse<404, string, { 'Content-Type': 'text/plain' }>,
+      @Res() invalidFulfilment: TsoaResponse<400, string, { 'Content-Type': 'text/plain' }>
   ): Promise<void> {
     const ctx: WarehouseContext = request.ctx
-    this.setStatus(201)
     try {
       await fulfilOrder(ctx.state.warehouse, order, booksFulfilled)
-      // Only after the copies came off the shelves: tell books each book's new total,
-      // and tell orders the order is done.
-      await publishStockLevels(ctx.state.events, ctx.state.warehouse, booksFulfilled.map(({ book }) => book))
-      await ctx.state.events.publish('OrderFulfilled', { orderId: order })
-      this.setStatus(201)
     } catch (e) {
-      this.setStatus(500)
+      if (e instanceof NoSuchOrderError) {
+        // 404: the order doesn't exist, or was already fulfilled
+        noSuchOrder(404, e.message, { 'Content-Type': 'text/plain' })
+        return
+      }
+      if (e instanceof InvalidFulfilmentError) {
+        // 400: the books taken don't match the order, or the shelves don't have them
+        invalidFulfilment(400, e.message, { 'Content-Type': 'text/plain' })
+        return
+      }
+      // Anything else is a real server error (500)
       console.error('Error Fulfilling Order', e)
+      throw e
     }
+    // Only after the copies came off the shelves: tell books each book's new total,
+    // and tell orders the order is done.
+    await publishStockLevels(ctx.state.events, ctx.state.warehouse, booksFulfilled.map(({ book }) => book))
+    await ctx.state.events.publish('OrderFulfilled', { orderId: order })
+    this.setStatus(201)
   }
 }
 

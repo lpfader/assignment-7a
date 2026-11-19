@@ -142,7 +142,7 @@ npm run test:ci
 ```
 
 `npm run test:ci` generates the spec, routes and client once (`npm run generate`), then
-runs each project's tests: 74 tests in 23 files (books 21, warehouse 37, orders 15,
+runs each project's tests: 76 tests in 23 files (books 21, warehouse 39, orders 15,
 docs 1). Each API test file starts its own in-memory MongoDB, so the tests don't need
 `docker compose` running and never touch your real data. Generating the client takes
 a few minutes. The root `lint` and `check-types` scripts also generate once first.
@@ -179,6 +179,19 @@ PUT /api/fulfil/65f1c0ffee1234567890abce
 ```
 
 Response: `201 Created`. A follow-up `GET /api/warehouse/...` now reports `4`.
+
+A fulfilment must take exactly the copies that were ordered, for every book in the
+order. If it can't be done, nothing changes and the response says why, as plain text:
+
+| Response | Body | When |
+|---|---|---|
+| `404` | `no such order` | the order doesn't exist, or was already fulfilled |
+| `400` | `incorrect number of books` | the copies taken don't add up to the order |
+| `400` | `one of the books is not in the order` | a book was taken that wasn't ordered |
+| `400` | `not enough copies on given shelves` | a shelf doesn't have the copies taken from it |
+
+The storefront shows that text in its error message, for example
+`Could not fulfil order (HTTP 400): incorrect number of books`.
 
 Every book's total across all shelves:
 
@@ -506,3 +519,24 @@ nginx: add a book, filter and look it up (`stock` 0), put 4 and 2 copies on two 
 `stock` 3). Unknown books give `400` / `404 unknown book`, and a second fulfilment
 fails. Swagger lists all eight tsoa routes under `/api` with the new responses and the
 `stock` field. RabbitMQ showed every event handled and none waiting.
+
+### V1.4.5
+
+Failed fulfilments now say what went wrong. `PUT /api/fulfil/{order}` used to answer
+every failure with an empty `500 Internal Server Error`, so the storefront could only
+show "Internal Server Error" and the reason was only in the container log.
+
+- `fulfil_order.ts` throws `NoSuchOrderError` and `InvalidFulfilmentError` (same
+  messages as before); the route turns them into `404` and `400` with the message as
+  a plain-text body, like the shelving route's `404 unknown book`. Anything else is
+  still logged and returned as a `500`. A failed fulfilment still changes nothing and
+  publishes no events.
+- Swagger lists the new `400` and `404` responses.
+- Tests: the four that expected `500` now expect `404` or `400`, and two new route
+  tests check the reason for a wrong count and for a shelf without enough copies
+  (warehouse 39 tests, 76 in total).
+
+Checked through nginx with a temporary book (deleted afterwards): a wrong count and
+too many copies gave `400 incorrect number of books`, an unknown order and a second
+fulfilment gave `404 no such order`, and the correct fulfilment gave `201` and removed
+the order.

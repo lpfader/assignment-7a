@@ -67,7 +67,7 @@ test<ServerTestContext>('a failed fulfilment publishes nothing', async ({ addres
     body: JSON.stringify({ booksFulfilled: [] })
   })
 
-  expect(response.status).toEqual(500)
+  expect(response.status).toEqual(404)
   expect(events.published).toEqual([])
 })
 
