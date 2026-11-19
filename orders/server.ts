@@ -5,22 +5,25 @@ import bodyParser from 'koa-bodyparser'
 import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { RegisterRoutes } from './build/routes'
 import { type AppOrdersDatabaseState, getOrdersDatabase } from './src/orders_data'
+import { type AppBrokerState, type Broker } from './src/messaging'
 
-// The orders API: only the /order routes. Swagger docs are served by the books
-// API from the combined swagger.json until the docs project exists.
+// The orders API: only the /order routes.
 export default async function (
   port?: number,
-  randomizeDbs?: boolean
+  randomizeDbs?: boolean,
+  broker?: Broker
 ): Promise<{
     server: Server<typeof IncomingMessage, typeof ServerResponse>
-    state: AppOrdersDatabaseState
+    state: AppOrdersDatabaseState & AppBrokerState
   }> {
   // TEMPORARY (V1.2.1): same database as the warehouse, see src/orders_data.ts
-  const state: AppOrdersDatabaseState = {
+  const state: AppOrdersDatabaseState & AppBrokerState = {
+    // Kept for Step 3, where the API publishes and subscribes to events.
+    broker,
     orders: getOrdersDatabase(randomizeDbs === true ? undefined : 'mcmasterful-warehouse')
   }
 
-  const app = new Koa<AppOrdersDatabaseState, Koa.DefaultContext>()
+  const app = new Koa<AppOrdersDatabaseState & AppBrokerState, Koa.DefaultContext>()
 
   app.use(async (ctx, next): Promise<void> => {
     ctx.state = state

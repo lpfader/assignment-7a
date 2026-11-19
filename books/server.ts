@@ -8,21 +8,25 @@ import KoaRouter from '@koa/router'
 import bodyParser from 'koa-bodyparser'
 import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { type AppBookDatabaseState, getBookDatabase } from './src/database_access'
+import { type AppBrokerState, type Broker } from './src/messaging'
 
 export default async function (
   port?: number,
-  randomizeDbs?: boolean
+  randomizeDbs?: boolean,
+  broker?: Broker
 ): Promise<{
     server: Server<typeof IncomingMessage, typeof ServerResponse>
-    state: AppBookDatabaseState
+    state: AppBookDatabaseState & AppBrokerState
   }> {
   const bookDb = getBookDatabase(randomizeDbs === true ? undefined : 'mcmasterful-books')
 
-  const state: AppBookDatabaseState = {
+  const state: AppBookDatabaseState & AppBrokerState = {
+    // Kept for Step 3, where the API publishes and subscribes to events.
+    broker,
     books: bookDb
   }
 
-  const app = new Koa<AppBookDatabaseState, Koa.DefaultContext>()
+  const app = new Koa<AppBookDatabaseState & AppBrokerState, Koa.DefaultContext>()
 
   app.use(async (ctx, next): Promise<void> => {
     ctx.state = state

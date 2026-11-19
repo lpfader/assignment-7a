@@ -22,17 +22,22 @@ Docker daemon, so `docker compose` works inside it.
 
 ```bash
 ./generate-openapi.sh      # builds build/swagger.json and the client/ SDK
-docker compose up -d       # nginx, front-end, books, warehouse, orders, docs, mongo
+docker compose up -d       # nginx, front-end, books, warehouse, orders, docs, mongo, rabbitmq
 ```
 
 Forward port 8080 (VS Code **Ports** tab), then open:
 
 - http://localhost:8080 — the storefront
 - http://localhost:8080/api/docs — Swagger UI
+- http://localhost:15672 — RabbitMQ dashboard (user `guest`, password `guest`; forward
+  port 15672 too). The **Connections** tab shows one connection per API.
 
 Everything is served from port 8080. nginx sends `/` to the front-end,
 `/api/warehouse/` and `/api/fulfil/` to the warehouse API, `/api/order` to the orders
 API, `/api/docs` to the docs service, and the rest of `/api/` to the books API.
+
+The APIs wait for RabbitMQ to pass its health check before they start, so the first
+`docker compose up` takes 10-20 seconds longer than the rest of the stack.
 
 ## Testing
 
@@ -213,3 +218,26 @@ and the docs run as separate servers.
   it, and the root `lint`, `check-types` and `test:ci` run it once before the projects.
   Before, `test:ci` and `lint` each generated everything once per project.
 - The root `package.json` installs, lints, type-checks and tests all four projects.
+
+### V1.3.0
+
+Step 2: RabbitMQ is added, and every API connects to it. No events are sent yet; that
+is Step 3.
+
+- `docker-compose.yaml` adds a `rabbitmq` container (`rabbitmq:3.13-management`) with
+  a health check, and exposes its dashboard on port 15672. books, warehouse and orders
+  wait until it is healthy before starting. docs doesn't use messaging, so it doesn't
+  wait.
+- books, warehouse and orders add `amqplib` 0.10.9 (and its types), pinned to the same
+  version in all three.
+- Each API has `src/messaging.ts`: `connectToBroker()` connects to `amqp://rabbitmq`
+  (or `RABBITMQ_URL`), retrying every 2 seconds for about 30 seconds, opens a channel,
+  and declares the `mcmasterful-books` topic exchange that all events will go through.
+- Each API's `index.ts` connects before starting and passes the connection to
+  `server()`, which keeps it for Step 3. The tests call `server()` without one, so they
+  still run without RabbitMQ.
+
+Checked with `docker compose up`: RabbitMQ becomes healthy, each API logs
+`connected to RabbitMQ`, the dashboard shows three connections with one channel each and
+the durable `mcmasterful-books` topic exchange, and the website, Swagger and the
+book, shelf, order and fulfil flow all still work.

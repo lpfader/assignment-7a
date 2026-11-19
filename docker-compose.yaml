@@ -1,13 +1,21 @@
-# Extension field: every API runs the same way, only from a different folder.
-# The whole repo is mounted so each API can still reach ../adapter for its types
+# Extension field: every Node service runs the same way, only from a different folder.
+# The whole repo is mounted so each one can still reach ../adapter for its types
 # and ../build/swagger.json for the combined spec.
-x-api: &api
+x-node: &node
   image: node:20
   volumes:
     - ./:/app
   command: npx -y tsx ./index.ts
+
+# The APIs also need mongo, and wait until RabbitMQ passes its health check: it
+# takes 10-20 seconds to boot, and connecting before then fails.
+x-api: &api
+  <<: *node
   depends_on:
-    - mongo
+    mongo:
+      condition: service_started
+    rabbitmq:
+      condition: service_healthy
 
 services:
   nginx:
@@ -44,10 +52,22 @@ services:
     working_dir: /app/orders
 
   # The Swagger UI for every API, from the combined build/swagger.json.
-  # It has no database; the shared mongo dependency is harmless.
+  # No database and no messaging, so it doesn't wait for either.
   docs:
-    <<: *api
+    <<: *node
     working_dir: /app/docs
 
   mongo:
     image: mongo:latest
+
+  # The message broker the APIs use to send each other events. The management
+  # image adds a dashboard: http://localhost:15672, user guest, password guest.
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - '15672:15672'
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 10s
+      retries: 20
