@@ -1,7 +1,8 @@
 import { MongoClient } from 'mongodb'
 
-// Copied from books/src/database_access.ts. Tests set MONGO_URI to an in-memory
-// server; otherwise this is the mongo container from docker-compose.yaml.
-const uri = ((global as any).MONGO_URI as string) ?? 'mongodb://mongo'
+// The tests set MONGO_URI to an in-memory server. Otherwise this is orders' own
+// database server (orders-db), from MONGO_URL in docker-compose.yaml. No other
+// service connects to it.
+const uri = ((global as any).MONGO_URI as string) ?? process.env.MONGO_URL ?? 'mongodb://orders-db'
 
 export const client = new MongoClient(uri)

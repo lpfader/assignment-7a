@@ -6,7 +6,7 @@ import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { RegisterRoutes } from './build/routes'
 import { type AppOrdersDatabaseState, getOrdersDatabase } from './src/orders_data'
 import { type AppEventsState, type EventBus, InMemoryEventBus } from '../shared/events'
-import { subscribeToBookEvents } from './src/book_events'
+import { subscribeToBookEvents, subscribeToOrderEvents } from './src/event_handlers'
 
 // The orders API: only the /order routes.
 export default async function (
@@ -17,11 +17,11 @@ export default async function (
     server: Server<typeof IncomingMessage, typeof ServerResponse>
     state: AppOrdersDatabaseState & AppEventsState
   }> {
-  // TEMPORARY (V1.2.1): same database as the warehouse, see src/orders_data.ts
+  // Its own database, on its own server (orders-db)
   const state: AppOrdersDatabaseState & AppEventsState = {
     // RabbitMQ in the running stack; the in-memory fake in the tests.
     events,
-    orders: getOrdersDatabase(randomizeDbs === true ? undefined : 'mcmasterful-warehouse')
+    orders: getOrdersDatabase(randomizeDbs === true ? undefined : 'mcmasterful-orders')
   }
 
   const app = new Koa<AppOrdersDatabaseState & AppEventsState, Koa.DefaultContext>()
@@ -39,6 +39,7 @@ export default async function (
   app.use(koaRouter.routes())
 
   await subscribeToBookEvents(events, state.orders)
+  await subscribeToOrderEvents(events, state.orders)
 
   // Event subscriptions are registered above this line; then start receiving.
   await events.start()

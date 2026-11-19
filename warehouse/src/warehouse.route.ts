@@ -85,8 +85,10 @@ export class FulfilOrderRoutes extends Controller {
     this.setStatus(201)
     try {
       await fulfilOrder(ctx.state.warehouse, order, booksFulfilled)
-      // Only after the copies came off the shelves: tell books each book's new total.
+      // Only after the copies came off the shelves: tell books each book's new total,
+      // and tell orders the order is done.
       await publishStockLevels(ctx.state.events, ctx.state.warehouse, booksFulfilled.map(({ book }) => book))
+      await ctx.state.events.publish('OrderFulfilled', { orderId: order })
       this.setStatus(201)
     } catch (e) {
       this.setStatus(500)

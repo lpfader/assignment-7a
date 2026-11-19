@@ -1,5 +1,6 @@
 import { type BookID, type OrderId } from '../../adapter/assignment-4'
 import { InMemoryOrders, type OrdersData } from './orders_data'
+import { type EventBus } from '../../shared/events'
 
 // Thrown when an order includes a book the orders service has never heard of (no
 // BookAdded event for it), so orders can't be placed for books that don't exist.
@@ -9,7 +10,9 @@ export class UnknownBooksError extends Error {
   }
 }
 
-export async function placeOrder (data: OrdersData, books: BookID[]): Promise<OrderId> {
+// With an event bus, the new order is announced (OrderPlaced) after it is saved, so
+// the warehouse can keep its own copy for fulfilment.
+export async function placeOrder (data: OrdersData, books: BookID[], events?: EventBus): Promise<OrderId> {
   const unknown: BookID[] = []
   for (const book of new Set(books)) {
     if (!(await data.isValidBook(book))) {
@@ -26,7 +29,9 @@ export async function placeOrder (data: OrdersData, books: BookID[]): Promise<Or
     order[book] = 1 + (order[book] ?? 0)
   }
 
-  return await data.placeOrder(order)
+  const orderId = await data.placeOrder(order)
+  await events?.publish('OrderPlaced', { orderId, books: order })
+  return orderId
 }
 
 if (import.meta.vitest !== undefined) {

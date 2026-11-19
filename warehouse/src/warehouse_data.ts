@@ -1,4 +1,3 @@
-import { ObjectId } from 'mongodb'
 import { type BookID } from '../../adapter/assignment-2'
 import { type OrderId, type ShelfId } from '../../adapter/assignment-4'
 import { getDefaultWarehouseDatabase } from './warehouse_database'
@@ -10,8 +9,9 @@ export interface WarehouseData {
   // Every book's total copies across all shelves
   getAllTotals: () => Promise<Record<BookID, number>>
   getOrder: (order: OrderId) => Promise<Record<BookID, number> | false>
-  placeOrder: (books: Record<BookID, number>) => Promise<OrderId>
-  listOrders: () => Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>>
+  // The warehouse's own copy of open orders, from the orders service's OrderPlaced
+  // events. Fulfilling an order removes it here (and tells orders: OrderFulfilled).
+  saveOrder: (order: OrderId, books: Record<BookID, number>) => Promise<void>
   removeOrder: (order: OrderId) => Promise<void>
   // The warehouse's own copy of the books that exist, kept up to date by the
   // BookAdded, BookUpdated and BookRemoved events from books.
@@ -93,17 +93,8 @@ export class InMemoryWarehouse implements WarehouseData {
     this.orders = orders
   }
 
-  async listOrders (): Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>> {
-    return Object.keys(this.orders).map((orderId) => {
-      const books = this.orders[orderId]
-      return { orderId, books }
-    })
-  }
-
-  async placeOrder (books: Record<string, number>): Promise<OrderId> {
-    const order = new ObjectId().toHexString()
+  async saveOrder (order: OrderId, books: Record<BookID, number>): Promise<void> {
     this.orders[order] = books
-    return order
   }
 }
 

@@ -22,7 +22,8 @@ Docker daemon, so `docker compose` works inside it.
 
 ```bash
 ./generate-openapi.sh      # builds build/swagger.json and the client/ SDK
-docker compose up -d       # nginx, front-end, books, warehouse, orders, docs, mongo, rabbitmq
+docker compose up -d       # nginx, front-end, books, warehouse, orders, docs,
+                           # mongo, warehouse-db, orders-db, rabbitmq
 ```
 
 Forward port 8080 (VS Code **Ports** tab), then open:
@@ -47,7 +48,7 @@ npm run test:ci
 ```
 
 `npm run test:ci` generates the spec, routes and client once (`npm run generate`), then
-runs each project's tests: 66 tests in 21 files (books 21, warehouse 33, orders 11,
+runs each project's tests: 74 tests in 23 files (books 21, warehouse 37, orders 15,
 docs 1). Each API test file starts its own in-memory MongoDB, so the tests don't need
 `docker compose` running and never touch your real data. Generating the client takes
 a few minutes. The root `lint` and `check-types` scripts also generate once first.
@@ -132,6 +133,11 @@ They do different jobs. Only the root file is what the site runs from.
   empty storefront until books are added through the UI or `POST /api/books`.
 - Book search is a `$regex` scan rather than an indexed search. Correct, but it
   gets slower as the catalogue grows.
+- The databases have no Docker volumes: their data lives inside the `mongo`,
+  `warehouse-db` and `orders-db` containers. `docker compose stop` keeps it;
+  `docker compose down` deletes it.
+- Before V1.4.3, warehouse and orders shared the `mcmasterful-warehouse` database on
+  the `mongo` server. That old database is left there unused; it can be dropped.
 - The cache is stored inside the nginx container, so it is empty after a rebuild.
   Requests then start at `MISS` until it warms up again.
 - The stock in the book list and book details is cached by nginx for up to 60
@@ -351,3 +357,34 @@ stock went from 0, to 5 after putting 3 and 2 copies on two shelves, to 3 after
 fulfilling an order for 2. With books' stock copy wiped, restarting books logged
 `initial sync: copied the stock of 7 books` and the stock was back. Swagger lists
 `GET /warehouse` and the storefront still works.
+
+### V1.4.3
+
+Order events and separate databases: no service reads or writes another's data any
+more.
+
+- orders publishes `OrderPlaced` (order id and copies of each book) after saving an
+  order; a rejected order publishes nothing. It subscribes to `OrderFulfilled` and
+  removes that order.
+- warehouse keeps its own copy of open orders from `OrderPlaced`, with the same id, so
+  the fulfilment code is unchanged. After a successful fulfilment it publishes
+  `OrderFulfilled` (as well as `BookStocked`). Its data layer lost `placeOrder` and
+  `listOrders`, which belong to orders, and gained `saveOrder`.
+- `docker-compose.yaml` adds the `warehouse-db` and `orders-db` Mongo servers. Each API
+  gets its own server through `MONGO_URL` and waits only for that one: books on `mongo`
+  (`mcmasterful-books`), warehouse on `warehouse-db` (`mcmasterful-warehouse`), orders on
+  `orders-db` (`mcmasterful-orders`). The temporary shared-database code and comments
+  are gone.
+- There is no startup sync for the warehouse's open orders, on purpose: RabbitMQ keeps
+  `OrderPlaced` events in the warehouse's queue while it is down, and a sync after a
+  restart could bring back an order that was just fulfilled, letting it be fulfilled
+  twice.
+- 8 new tests, 74 in total.
+
+Checked with `docker compose up`: warehouse's queue is bound to `OrderPlaced` and
+orders' to `OrderFulfilled`. Shelving 5, ordering 2 and fulfilling left the order list
+empty and books showing 3 in stock, with the order's copy in warehouse-db in between.
+With the warehouse stopped, an order was placed; once the warehouse was back it could
+fulfil that order, so the event had waited in its queue. Each Mongo server holds only
+its own API's collections, and the only other services named in the APIs' code are the
+two initial-sync requests.

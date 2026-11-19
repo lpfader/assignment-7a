@@ -28,9 +28,9 @@ test<ServerTestContext>('fulfilling an order takes the copies off the shelf', as
 
   await fetch(`${address}/warehouse/${bookId}/shelf_1/5`, { method: 'PUT' })
 
-  // The /order routes live in the orders API now, so the order is added straight
-  // into the shared database rather than through POST /order.
-  const orderId = await state.warehouse.placeOrder({ [bookId]: 1 })
+  // The warehouse's own copy of the order (normally from an OrderPlaced event)
+  const orderId = generateId<string>()
+  await state.warehouse.saveOrder(orderId, { [bookId]: 1 })
 
   const fulfilled = await fetch(`${address}/fulfil/${orderId}`, {
     method: 'PUT',

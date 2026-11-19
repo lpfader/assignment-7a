@@ -8,9 +8,8 @@ export interface WarehouseDatabaseAccessor {
   database: Db
   books: Collection<{ book: BookID, shelf: ShelfId, count: number }>
   orders: Collection<{ books: Record<BookID, number> }>
-  // The warehouse's copy of which books exist. Named book_names (not books, which
-  // holds shelf stock) and different from orders' valid_books, because the two
-  // services still share a database until V1.4.3.
+  // The warehouse's copy of open orders, from OrderPlaced events (above), and of which
+  // books exist, from the book events. Named book_names because books holds shelf stock.
   bookNames: Collection<{ _id: BookID, name: string }>
 }
 export interface AppWarehouseDatabaseState {
@@ -83,17 +82,10 @@ export class DatabaseWarehouse implements WarehouseData {
     await this.accessor.orders.deleteOne({ _id: ObjectId.createFromHexString(order) })
   }
 
-  async listOrders (): Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>> {
-    const result = await this.accessor.orders.find().toArray()
-
-    return result.map(({ _id, books }) => {
-      return { orderId: _id.toHexString(), books }
-    })
-  }
-
-  async placeOrder (books: Record<string, number>): Promise<OrderId> {
-    const result = await this.accessor.orders.insertOne({ books })
-    return result.insertedId.toHexString()
+  async saveOrder (order: OrderId, books: Record<BookID, number>): Promise<void> {
+    // Same id as in the orders service. Upsert, so handling the same event twice is
+    // harmless.
+    await this.accessor.orders.replaceOne({ _id: ObjectId.createFromHexString(order) }, { books }, { upsert: true })
   }
 
   async saveBookName (bookId: BookID, name: string): Promise<void> {
@@ -200,31 +192,16 @@ if (import.meta.vitest !== undefined) {
     const memData = new InMemoryWarehouse()
     const dbData = new DatabaseWarehouse(db)
 
-    const [memOrderId, dbOrderId] = await Promise.all([memData.placeOrder({ book: 2 }), dbData.placeOrder({ book: 2 })])
-    const [memOrder, dbOrder] = await Promise.all([memData.getOrder(memOrderId), dbData.getOrder(dbOrderId)])
+    const order = generateId<OrderId>()
 
-    expect(memOrder).toMatchObject(dbOrder)
-    expect(dbOrder).toBeTruthy()
-    if (dbOrder !== false) {
-      expect(dbOrder.book).toEqual(2)
+    for (const data of [memData, dbData]) {
+      await data.saveOrder(order, { book: 2 })
+      await data.saveOrder(order, { book: 2 })
+      expect(await data.getOrder(order)).toEqual({ book: 2 })
+
+      await data.removeOrder(order)
+      expect(await data.getOrder(order)).toBe(false)
     }
-
-    const [memOrderId2, dbOrderId2] = await Promise.all([
-      memData.placeOrder({ book: 1 }),
-      dbData.placeOrder({ book: 1 })
-    ])
-    const [memList, dbList] = await Promise.all([memData.listOrders(), dbData.listOrders()])
-
-    expect(memList.length).toEqual(dbList.length)
-    expect(dbList.length).toEqual(2)
-
-    await Promise.all([memData.removeOrder(memOrderId), dbData.removeOrder(dbOrderId)])
-    await Promise.all([memData.removeOrder(memOrderId2), dbData.removeOrder(dbOrderId2)])
-
-    const [memList2, dbList2] = await Promise.all([memData.listOrders(), dbData.listOrders()])
-
-    expect(memList2.length).toEqual(dbList2.length)
-    expect(dbList2.length).toEqual(0)
   })
 }
 

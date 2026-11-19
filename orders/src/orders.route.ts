@@ -4,6 +4,7 @@ import { type OrderId, type OrderPlacement, type Order } from '../../shared/docu
 import { placeOrder, UnknownBooksError } from './place_order'
 import { listOrders } from './list_orders'
 import { type AppOrdersDatabaseState } from './orders_data'
+import { type AppEventsState } from '../../shared/events'
 
 // Moved unchanged from books/src/warehouse/warehouse.route.ts, apart from
 // reading ctx.state.orders instead of ctx.state.warehouse.
@@ -21,10 +22,10 @@ export class OrderRoutes extends Controller {
       @Request() request: KoaRequest,
       @Res() unknownBooks: TsoaResponse<400, string, { 'Content-Type': 'text/plain' }>
   ): Promise<OrderId> {
-    const ctx: ParameterizedContext<AppOrdersDatabaseState, DefaultContext> = request.ctx
+    const ctx: ParameterizedContext<AppOrdersDatabaseState & AppEventsState, DefaultContext> = request.ctx
     this.setStatus(201)
     try {
-      const result = await placeOrder(ctx.state.orders, order)
+      const result = await placeOrder(ctx.state.orders, order, ctx.state.events)
       return result
     } catch (e) {
       if (e instanceof UnknownBooksError) {

@@ -16,3 +16,11 @@ export async function subscribeToBookEvents (events: EventBus, data: WarehouseDa
     await data.removeBookName(id)
   })
 }
+
+// Keep the warehouse's own copy of open orders, from the orders service's events,
+// so it can fulfil them without reading the orders service's database.
+export async function subscribeToOrderEvents (events: EventBus, data: WarehouseData): Promise<void> {
+  await events.subscribe('OrderPlaced', async ({ orderId, books }) => {
+    await data.saveOrder(orderId, books)
+  })
+}

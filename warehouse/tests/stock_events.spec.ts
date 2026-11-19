@@ -38,7 +38,8 @@ test<ServerTestContext>('fulfilling an order publishes the new total of each boo
   await state.warehouse.saveBookName(second, 'Second')
   await shelve(address, first, 'shelf_1', 5)
   await shelve(address, second, 'shelf_1', 2)
-  const orderId = await state.warehouse.placeOrder({ [first]: 2, [second]: 1 })
+  const orderId = generateId<string>()
+  await state.warehouse.saveOrder(orderId, { [first]: 2, [second]: 1 })
   events.published = []
 
   const response = await fetch(`${address}/fulfil/${orderId}`, {

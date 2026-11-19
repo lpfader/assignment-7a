@@ -6,7 +6,7 @@ import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { RegisterRoutes } from './build/routes'
 import { type AppWarehouseDatabaseState, getDefaultWarehouseDatabase } from './src/warehouse_database'
 import { type AppEventsState, type EventBus, InMemoryEventBus } from '../shared/events'
-import { subscribeToBookEvents } from './src/book_events'
+import { subscribeToBookEvents, subscribeToOrderEvents } from './src/event_handlers'
 
 // The warehouse API: the shelf routes and order fulfilment.
 export default async function (
@@ -17,8 +17,7 @@ export default async function (
     server: Server<typeof IncomingMessage, typeof ServerResponse>
     state: AppWarehouseDatabaseState & AppEventsState
   }> {
-  // TEMPORARY: the orders API uses this database too, because fulfilment reads and
-  // removes orders. Step 3 gives each API its own database and uses events instead.
+  // Its own database, on its own server (warehouse-db)
   const state: AppWarehouseDatabaseState & AppEventsState = {
     // RabbitMQ in the running stack; the in-memory fake in the tests.
     events,
@@ -40,6 +39,7 @@ export default async function (
   app.use(koaRouter.routes())
 
   await subscribeToBookEvents(events, state.warehouse)
+  await subscribeToOrderEvents(events, state.warehouse)
 
   // Event subscriptions are registered above this line; then start receiving.
   await events.start()

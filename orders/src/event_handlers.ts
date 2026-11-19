@@ -11,3 +11,11 @@ export async function subscribeToBookEvents (events: EventBus, data: OrdersData)
     await data.removeBookId(id)
   })
 }
+
+// The warehouse tells this service when it has fulfilled an order, which removes it
+// from the list of pending orders.
+export async function subscribeToOrderEvents (events: EventBus, data: OrdersData): Promise<void> {
+  await events.subscribe('OrderFulfilled', async ({ orderId }) => {
+    await data.removeOrder(orderId)
+  })
+}

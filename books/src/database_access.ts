@@ -2,9 +2,9 @@ import { type Collection, type Db, MongoClient } from 'mongodb'
 // We are importing the book type here, so we can keep our types consistent with the front end
 import { type Book } from '../../adapter/assignment-3'
 
-// This is the connection string for the mongo database in our docker compose file
-// We're using process.env to detect if a different mongo uri is set, primarily for testing purpuses
-const uri = ((global as any).MONGO_URI as string) ?? 'mongodb://mongo'
+// The tests set MONGO_URI to an in-memory server. Otherwise this is books' own
+// database server, from MONGO_URL in docker-compose.yaml.
+const uri = ((global as any).MONGO_URI as string) ?? process.env.MONGO_URL ?? 'mongodb://mongo'
 
 // We're setting up a client, opening the database for our project, and then opening
 // a typed collection for our books.

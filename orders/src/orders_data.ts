@@ -2,17 +2,15 @@ import { ObjectId, type Collection, type Db } from 'mongodb'
 import { type BookID, type OrderId } from '../../adapter/assignment-4'
 import { client } from './database_access'
 
-// The order half of books/src/warehouse/warehouse_data.ts and warehouse_database.ts,
-// copied here so the orders API can run on its own.
-//
-// TEMPORARY (V1.2.1): this still uses the warehouse's database, because the
-// warehouse's fulfil route reads and removes orders from the same collection.
-// Step 3 gives each API its own database and replaces this sharing with events.
+// The orders service's data, in its own database (on the orders-db server). The
+// warehouse keeps its own copy of open orders from OrderPlaced events, and tells
+// this service when an order is fulfilled (OrderFulfilled), which removes it here.
 
 export interface OrdersData {
   getOrder: (order: OrderId) => Promise<Record<BookID, number> | false>
   placeOrder: (books: Record<BookID, number>) => Promise<OrderId>
   listOrders: () => Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>>
+  removeOrder: (order: OrderId) => Promise<void>
   // The orders service's own copy of which book ids are valid, kept up to date by
   // the BookAdded and BookRemoved events from books.
   saveBookId: (bookId: BookID) => Promise<void>
@@ -58,6 +56,11 @@ export class InMemoryOrders implements OrdersData {
     return Object.keys(this.orders).map((orderId) => ({ orderId, books: this.orders[orderId] }))
   }
 
+  async removeOrder (order: OrderId): Promise<void> {
+    const { [order]: _removed, ...rest } = this.orders
+    this.orders = rest
+  }
+
   async placeOrder (books: Record<BookID, number>): Promise<OrderId> {
     const order = new ObjectId().toHexString()
     this.orders[order] = books
@@ -67,8 +70,7 @@ export class InMemoryOrders implements OrdersData {
 
 export class DatabaseOrders implements OrdersData {
   orders: Collection<{ books: Record<BookID, number> }>
-  // Named valid_books (different from the warehouse's book_names), because the two
-  // services still share a database until V1.4.3.
+  // The orders service's copy of the valid book ids, from the book events.
   validBooks: Collection<{ _id: BookID }>
 
   constructor (database: Db) {
@@ -103,6 +105,10 @@ export class DatabaseOrders implements OrdersData {
     return result.map(({ _id, books }) => ({ orderId: _id.toHexString(), books }))
   }
 
+  async removeOrder (order: OrderId): Promise<void> {
+    await this.orders.deleteOne({ _id: ObjectId.createFromHexString(order) })
+  }
+
   async placeOrder (books: Record<BookID, number>): Promise<OrderId> {
     const result = await this.orders.insertOne({ books })
     return result.insertedId.toHexString()
@@ -129,6 +135,19 @@ if (import.meta.vitest !== undefined) {
     const [memList, dbList] = await Promise.all([memData.listOrders(), dbData.listOrders()])
     expect(memList.length).toEqual(dbList.length)
     expect(dbList.length).toEqual(1)
+  })
+
+  test('orders can be removed, and removing one twice is harmless', async () => {
+    for (const data of [new InMemoryOrders(), getOrdersDatabase()]) {
+      const keep = await data.placeOrder({ book: 1 })
+      const remove = await data.placeOrder({ book: 2 })
+
+      await data.removeOrder(remove)
+      await data.removeOrder(remove)
+
+      expect(await data.getOrder(remove)).toBe(false)
+      expect((await data.listOrders()).map(({ orderId }) => orderId)).toEqual([keep])
+    }
   })
 
   test('valid book ids can be saved, checked, counted and removed', async () => {

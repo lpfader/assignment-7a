@@ -7,15 +7,9 @@ x-node: &node
     - ./:/app
   command: npx -y tsx ./index.ts
 
-# The APIs also need mongo, and wait until RabbitMQ passes its health check: it
-# takes 10-20 seconds to boot, and connecting before then fails.
-x-api: &api
-  <<: *node
-  depends_on:
-    mongo:
-      condition: service_started
-    rabbitmq:
-      condition: service_healthy
+# Each API has its own database server (MONGO_URL) that no other service connects
+# to, and waits for it and for RabbitMQ's health check: RabbitMQ takes 10-20 seconds
+# to boot, and connecting before then fails.
 
 services:
   nginx:
@@ -36,20 +30,41 @@ services:
     volumes:
       - ./adapter:/source/adapter
 
-  # The book catalogue.
+  # The book catalogue, and its copy of each book's total stock.
   books:
-    <<: *api
+    <<: *node
     working_dir: /app/books
+    environment:
+      MONGO_URL: mongodb://mongo
+    depends_on:
+      mongo:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
-  # Shelf stock and order fulfilment.
+  # Shelf stock and order fulfilment, and its copies of book names and open orders.
   warehouse:
-    <<: *api
+    <<: *node
     working_dir: /app/warehouse
+    environment:
+      MONGO_URL: mongodb://warehouse-db
+    depends_on:
+      warehouse-db:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
-  # Placing and listing orders.
+  # Placing and listing orders, and its copy of the valid book ids.
   orders:
-    <<: *api
+    <<: *node
     working_dir: /app/orders
+    environment:
+      MONGO_URL: mongodb://orders-db
+    depends_on:
+      orders-db:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   # The Swagger UI for every API, from the combined build/swagger.json.
   # No database and no messaging, so it doesn't wait for either.
@@ -57,7 +72,16 @@ services:
     <<: *node
     working_dir: /app/docs
 
+  # One database server per API. mongo is books' (it kept its name so the existing
+  # catalogue stays). The data lives in each container, so `docker compose down`
+  # deletes it; `stop` keeps it.
   mongo:
+    image: mongo:latest
+
+  warehouse-db:
+    image: mongo:latest
+
+  orders-db:
     image: mongo:latest
 
   # The message broker the APIs use to send each other events. The management
