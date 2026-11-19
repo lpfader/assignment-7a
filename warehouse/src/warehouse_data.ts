@@ -11,19 +11,45 @@ export interface WarehouseData {
   placeOrder: (books: Record<BookID, number>) => Promise<OrderId>
   listOrders: () => Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>>
   removeOrder: (order: OrderId) => Promise<void>
+  // The warehouse's own copy of the books that exist, kept up to date by the
+  // BookAdded, BookUpdated and BookRemoved events from books.
+  saveBookName: (bookId: BookID, name: string) => Promise<void>
+  removeBookName: (bookId: BookID) => Promise<void>
+  getBookName: (bookId: BookID) => Promise<string | false>
+  countBookNames: () => Promise<number>
 }
 
 export class InMemoryWarehouse implements WarehouseData {
   books: Record<BookID, Record<ShelfId, number>>
   orders: Record<OrderId, Record<BookID, number>>
+  bookNames: Record<BookID, string>
 
   constructor (params?: {
     books?: Record<BookID, Record<ShelfId, number>>
     orders?: Record<OrderId, Record<ShelfId, number>>
+    bookNames?: Record<BookID, string>
   }) {
-    const { books, orders } = params ?? {}
+    const { books, orders, bookNames } = params ?? {}
     this.books = books ?? {}
     this.orders = orders ?? {}
+    this.bookNames = bookNames ?? {}
+  }
+
+  async saveBookName (bookId: BookID, name: string): Promise<void> {
+    this.bookNames[bookId] = name
+  }
+
+  async removeBookName (bookId: BookID): Promise<void> {
+    const { [bookId]: _removed, ...rest } = this.bookNames
+    this.bookNames = rest
+  }
+
+  async getBookName (bookId: BookID): Promise<string | false> {
+    return this.bookNames[bookId] ?? false
+  }
+
+  async countBookNames (): Promise<number> {
+    return Object.keys(this.bookNames).length
   }
 
   async placeBookOnShelf (bookId: string, shelf: string, count: number): Promise<void> {

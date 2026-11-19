@@ -1,0 +1,11 @@
+{
+  // shared/ is not a project of its own (no package.json), so it borrows books'
+  // settings and packages. books' lint and check-types scripts use this file to
+  // check every shared file, not only the ones books happens to import.
+  "extends": "../books/tsconfig.json",
+  "compilerOptions": {
+    "typeRoots": ["../books/node_modules/@types"],
+    "types": ["node"]
+  },
+  "include": ["*.ts"]
+}

@@ -41,7 +41,7 @@ export default async function (
 
   const router = zodRouter({ zodRouter: { exposeRequestErrors: true } })
 
-  setupBookRoutes(router, state.books)
+  setupBookRoutes(router, state.books, state.events)
 
   app.use(bodyParser())
   app.use(router.routes())

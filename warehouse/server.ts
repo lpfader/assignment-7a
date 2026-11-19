@@ -6,6 +6,7 @@ import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { RegisterRoutes } from './build/routes'
 import { type AppWarehouseDatabaseState, getDefaultWarehouseDatabase } from './src/warehouse_database'
 import { type AppEventsState, type EventBus, InMemoryEventBus } from '../shared/events'
+import { subscribeToBookEvents } from './src/book_events'
 
 // The warehouse API: the shelf routes and order fulfilment.
 export default async function (
@@ -37,6 +38,8 @@ export default async function (
   const koaRouter = new KoaRouter()
   RegisterRoutes(koaRouter)
   app.use(koaRouter.routes())
+
+  await subscribeToBookEvents(events, state.warehouse)
 
   // Event subscriptions are registered above this line; then start receiving.
   await events.start()

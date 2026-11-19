@@ -1,7 +1,7 @@
-import { BodyProp, Controller, Get, Path, Put, Route, SuccessResponse, Request } from 'tsoa'
+import { BodyProp, Controller, Get, Path, Put, Route, SuccessResponse, Request, Res, type TsoaResponse } from 'tsoa'
 import { getBookInfo } from './get_book_info'
 import { type ShelfId, type BookID, type OrderId, type FulfilledBooks } from '../../shared/documented_types'
-import { placeBooksOnShelf } from './place_on_shelf'
+import { placeBooksOnShelf, UnknownBookError } from './place_on_shelf'
 import { fulfilOrder } from './fulfil_order'
 import { type ParameterizedContext, type DefaultContext, type Request as KoaRequest } from 'koa'
 import { type AppWarehouseDatabaseState } from './warehouse_database'
@@ -33,11 +33,21 @@ export class WarehouseRoutes extends Controller {
     @Path() book: BookID,
       @Path() shelf: ShelfId,
       @Path() number: number,
-      @Request() request: KoaRequest
+      @Request() request: KoaRequest,
+      @Res() unknownBook: TsoaResponse<404, string, { 'Content-Type': 'text/plain' }>
   ): Promise<void> {
     const ctx: ParameterizedContext<AppWarehouseDatabaseState, DefaultContext> = request.ctx
     this.setStatus(201)
-    await placeBooksOnShelf(ctx.state.warehouse, book, number, shelf)
+    try {
+      await placeBooksOnShelf(ctx.state.warehouse, book, number, shelf)
+    } catch (e) {
+      if (e instanceof UnknownBookError) {
+        // 404: the book in the URL doesn't exist (as far as the warehouse knows)
+        unknownBook(404, e.message, { 'Content-Type': 'text/plain' })
+        return
+      }
+      throw e
+    }
   }
 }
 

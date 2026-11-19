@@ -7,8 +7,10 @@ setup()
 
 // Moved from books/tests/api.spec.ts in V1.2.2, along with the warehouse routes.
 
-test<ServerTestContext>('placing copies on a shelf makes them show up in the book info', async ({ address }) => {
+test<ServerTestContext>('placing copies on a shelf makes them show up in the book info', async ({ address, state }) => {
   const bookId = generateId<BookID>()
+  // The warehouse only stocks books it knows about (normally from a BookAdded event)
+  await state.warehouse.saveBookName(bookId, 'A Book')
 
   const placed = await fetch(`${address}/warehouse/${bookId}/shelf_1/5`, { method: 'PUT' })
 
@@ -22,6 +24,7 @@ test<ServerTestContext>('placing copies on a shelf makes them show up in the boo
 
 test<ServerTestContext>('fulfilling an order takes the copies off the shelf', async ({ address, state }) => {
   const bookId = generateId<BookID>()
+  await state.warehouse.saveBookName(bookId, 'A Book')
 
   await fetch(`${address}/warehouse/${bookId}/shelf_1/5`, { method: 'PUT' })
 

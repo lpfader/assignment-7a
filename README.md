@@ -47,7 +47,7 @@ npm run test:ci
 ```
 
 `npm run test:ci` generates the spec, routes and client once (`npm run generate`), then
-runs each project's tests: 37 tests in 15 files (books 11, warehouse 19, orders 6,
+runs each project's tests: 54 tests in 18 files (books 15, warehouse 27, orders 11,
 docs 1). Each API test file starts its own in-memory MongoDB, so the tests don't need
 `docker compose` running and never touch your real data. Generating the client takes
 a few minutes. The root `lint` and `check-types` scripts also generate once first.
@@ -121,6 +121,11 @@ They do different jobs. Only the root file is what the site runs from.
   gets slower as the catalogue grows.
 - The cache is stored inside the nginx container, so it is empty after a rebuild.
   Requests then start at `MISS` until it warms up again.
+- Each API compiles its TypeScript when it starts (`npx tsx`), so after a restart it
+  takes up to about 30 seconds to answer. Until then nginx returns `502`.
+- Events are published after the database change succeeds, but not in the same
+  transaction: if RabbitMQ were unreachable at that moment, the change would be saved
+  and the event lost. The initial sync covers an empty copy, not a missed event.
 
 
 ## Version history
@@ -269,3 +274,37 @@ sent yet, so the APIs behave exactly as before.
   channel, so CI still needs no RabbitMQ.
 - books' `lint` script now also lints `shared/`, which no project linted before. It
   found three small type issues in the new files, which are fixed.
+
+### V1.4.1
+
+Book events: warehouse and orders keep their own copy of which books exist, kept up to
+date by events from books, and reject books that aren't in it.
+
+- books publishes `BookAdded` (new book, with its id), `BookUpdated` and `BookRemoved`,
+  only after the database change succeeds. A failed update or delete publishes nothing.
+- warehouse keeps book names in a new `book_names` collection (`BookAdded` and
+  `BookUpdated` save the name, `BookRemoved` deletes it). Stocking a book it doesn't
+  know is now `404 unknown book: <id>`. A removed book's existing shelf stock stays
+  recorded, since those copies still exist; it just can't be restocked.
+- orders keeps valid book ids in a new `valid_books` collection (`BookAdded` saves,
+  `BookRemoved` deletes; it doesn't need names, so it ignores `BookUpdated`). An order
+  with any unknown book is now `400 unknown book: <ids>` and is not saved.
+- The two collections have different names because warehouse and orders still share a
+  database until V1.4.3.
+- The new error responses are documented in Swagger, and the storefront shows their
+  text.
+- Initial sync (`shared/initial_sync.ts`): on startup, if its copy is empty, warehouse
+  and orders each fetch the book list from the books API once, retrying while books
+  starts. A failure is logged, not fatal. Without this, books created before this
+  version couldn't be stocked or ordered.
+- Tests: each project's test server gets its own fake event bus, so tests can send it
+  events and check what it published. Existing tests that used made-up books now add
+  them to the copy first. 17 new tests, 54 in total.
+- `shared/tsconfig.json` lets books' `lint` and `check-types` scripts check every file
+  in `shared/`. Before, only files books imported were checked.
+
+Checked with `docker compose up`: RabbitMQ shows warehouse's queue bound to the three
+book events and orders' to `BookAdded` and `BookRemoved`. A new book could be stocked,
+ordered and fulfilled; made-up ids got 404 and 400; after deleting the book both
+services rejected it. With both copies wiped, restarting warehouse and orders logged
+`initial sync: copied 2 books`, and the same books could be stocked and ordered again.

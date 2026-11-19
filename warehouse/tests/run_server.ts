@@ -1,18 +1,22 @@
 import { afterEach, beforeEach } from 'vitest'
 import server from '../server'
 import { type AppWarehouseDatabaseState } from '../src/warehouse_database'
+import { InMemoryEventBus } from '../../shared/events'
 
 // Same pattern as books/tests/run_server.ts: start the warehouse API on a random
 // port for every test, against this test file's in-memory MongoDB.
 export interface ServerTestContext {
   address: string
   state: AppWarehouseDatabaseState
+  // The fake event bus the server was given, to send it events and check what it published
+  events: InMemoryEventBus
   closeServer: () => void
 }
 
 export default function (): void {
   beforeEach<ServerTestContext>(async (context) => {
-    const { server: instance, state } = await server()
+    const events = new InMemoryEventBus()
+    const { server: instance, state } = await server(undefined, undefined, events)
     const address = instance.address()
     if (typeof address === 'string') {
       context.address = `http://${address}`
@@ -22,6 +26,7 @@ export default function (): void {
       throw new Error('couldnt set up server')
     }
     context.state = state
+    context.events = events
     context.closeServer = () => {
       instance.close()
     }

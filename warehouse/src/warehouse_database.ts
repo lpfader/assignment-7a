@@ -8,6 +8,10 @@ export interface WarehouseDatabaseAccessor {
   database: Db
   books: Collection<{ book: BookID, shelf: ShelfId, count: number }>
   orders: Collection<{ books: Record<BookID, number> }>
+  // The warehouse's copy of which books exist. Named book_names (not books, which
+  // holds shelf stock) and different from orders' valid_books, because the two
+  // services still share a database until V1.4.3.
+  bookNames: Collection<{ _id: BookID, name: string }>
 }
 export interface AppWarehouseDatabaseState {
   warehouse: WarehouseData
@@ -18,11 +22,13 @@ export async function getWarehouseDatabase (dbName?: string): Promise<WarehouseD
   const books = database.collection<{ book: BookID, shelf: ShelfId, count: number }>('books')
   await books.createIndex({ book: 1, shelf: 1 }, { unique: true })
   const orders = database.collection<{ books: Record<BookID, number> }>('orders')
+  const bookNames = database.collection<{ _id: BookID, name: string }>('book_names')
 
   return {
     database,
     books,
-    orders
+    orders,
+    bookNames
   }
 }
 
@@ -78,6 +84,24 @@ export class DatabaseWarehouse implements WarehouseData {
     const result = await this.accessor.orders.insertOne({ books })
     return result.insertedId.toHexString()
   }
+
+  async saveBookName (bookId: BookID, name: string): Promise<void> {
+    // Upsert, so handling the same event twice is harmless.
+    await this.accessor.bookNames.replaceOne({ _id: bookId }, { name }, { upsert: true })
+  }
+
+  async removeBookName (bookId: BookID): Promise<void> {
+    await this.accessor.bookNames.deleteOne({ _id: bookId })
+  }
+
+  async getBookName (bookId: BookID): Promise<string | false> {
+    const result = await this.accessor.bookNames.findOne({ _id: bookId })
+    return result !== null ? result.name : false
+  }
+
+  async countBookNames (): Promise<number> {
+    return await this.accessor.bookNames.countDocuments()
+  }
 }
 
 if (import.meta.vitest !== undefined) {
@@ -131,6 +155,23 @@ if (import.meta.vitest !== undefined) {
     expect(dbResult.shelf_1).toEqual(5)
     expect(memResult.shelf_2).toEqual(dbResult.shelf_2)
     expect(dbResult.shelf_2).toEqual(3)
+  })
+
+  test('book names can be saved, renamed, read, counted and removed', async () => {
+    const memData = new InMemoryWarehouse()
+    const dbData = new DatabaseWarehouse(await getWarehouseDatabase())
+    const book = generateId<BookID>()
+
+    for (const data of [memData, dbData]) {
+      await data.saveBookName(book, 'First Name')
+      await data.saveBookName(book, 'Second Name')
+      expect(await data.getBookName(book)).toEqual('Second Name')
+      expect(await data.countBookNames()).toEqual(1)
+
+      await data.removeBookName(book)
+      expect(await data.getBookName(book)).toBe(false)
+      expect(await data.countBookNames()).toEqual(0)
+    }
   })
 
   test('order crud works as expected', async () => {

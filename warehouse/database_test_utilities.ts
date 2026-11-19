@@ -4,9 +4,17 @@ import { type WarehouseDatabaseAccessor } from './src/warehouse_database'
 
 export async function seedWarehouseDatabase (
   accessor: WarehouseDatabaseAccessor,
-  { books, orders }: { books: Record<BookID, Record<ShelfId, number>>, orders: Record<OrderId, Record<BookID, number>> }
+  { books, orders, bookNames }: {
+    books: Record<BookID, Record<ShelfId, number>>
+    orders: Record<OrderId, Record<BookID, number>>
+    bookNames?: Record<BookID, string>
+  }
 ): Promise<void> {
   await Promise.all([
+    // The warehouse's copy of which books exist (normally filled by BookAdded events)
+    ...Object.entries(bookNames ?? {}).map(async ([book, name]) => {
+      return await accessor.bookNames.insertOne({ _id: book, name })
+    }),
     // Note: not async — returning the array of insert promises lets flatMap
     // flatten them into Promise.all above, so the inserts are actually awaited.
     ...Object.keys(books).flatMap((book) => {

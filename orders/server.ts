@@ -6,6 +6,7 @@ import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { RegisterRoutes } from './build/routes'
 import { type AppOrdersDatabaseState, getOrdersDatabase } from './src/orders_data'
 import { type AppEventsState, type EventBus, InMemoryEventBus } from '../shared/events'
+import { subscribeToBookEvents } from './src/book_events'
 
 // The orders API: only the /order routes.
 export default async function (
@@ -36,6 +37,8 @@ export default async function (
   const koaRouter = new KoaRouter()
   RegisterRoutes(koaRouter)
   app.use(koaRouter.routes())
+
+  await subscribeToBookEvents(events, state.orders)
 
   // Event subscriptions are registered above this line; then start receiving.
   await events.start()

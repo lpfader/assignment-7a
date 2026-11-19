@@ -4,6 +4,10 @@ import setup, { type ServerTestContext } from './run_server'
 setup()
 
 test<ServerTestContext>('placing an order returns its id and it shows up in the order list', async ({ address, state }) => {
+  // Orders only accepts books it knows about (normally from BookAdded events)
+  await state.orders.saveBookId('book_a')
+  await state.orders.saveBookId('book_b')
+
   const placed = await fetch(`${address}/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

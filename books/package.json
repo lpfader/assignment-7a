@@ -5,9 +5,9 @@
   "main": "index.ts",
   "scripts": {
     "start-server": "../generate-openapi.sh && tsx ./index.ts",
-    "lint": "eslint --ext .ts . && eslint --no-eslintrc -c .eslintrc.js --parser-options project:./tsconfig.json --ext .ts ../shared",
-    "fix-lint": "eslint --ext .ts --fix . && eslint --no-eslintrc -c .eslintrc.js --parser-options project:./tsconfig.json --ext .ts --fix ../shared",
-    "check-types": "tsc --noEmit",
+    "lint": "eslint --ext .ts . && eslint --no-eslintrc -c .eslintrc.js --parser-options project:../shared/tsconfig.json --ext .ts ../shared",
+    "fix-lint": "eslint --ext .ts --fix . && eslint --no-eslintrc -c .eslintrc.js --parser-options project:../shared/tsconfig.json --ext .ts --fix ../shared",
+    "check-types": "tsc --noEmit && tsc --noEmit -p ../shared",
     "test": "vitest",
     "test:ci": "vitest run"
   },

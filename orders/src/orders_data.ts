@@ -13,6 +13,12 @@ export interface OrdersData {
   getOrder: (order: OrderId) => Promise<Record<BookID, number> | false>
   placeOrder: (books: Record<BookID, number>) => Promise<OrderId>
   listOrders: () => Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>>
+  // The orders service's own copy of which book ids are valid, kept up to date by
+  // the BookAdded and BookRemoved events from books.
+  saveBookId: (bookId: BookID) => Promise<void>
+  removeBookId: (bookId: BookID) => Promise<void>
+  isValidBook: (bookId: BookID) => Promise<boolean>
+  countValidBooks: () => Promise<number>
 }
 
 export interface AppOrdersDatabaseState {
@@ -21,9 +27,27 @@ export interface AppOrdersDatabaseState {
 
 export class InMemoryOrders implements OrdersData {
   orders: Record<OrderId, Record<BookID, number>>
+  validBooks: Set<BookID>
 
-  constructor (params?: { orders?: Record<OrderId, Record<BookID, number>> }) {
+  constructor (params?: { orders?: Record<OrderId, Record<BookID, number>>, validBooks?: BookID[] }) {
     this.orders = params?.orders ?? {}
+    this.validBooks = new Set(params?.validBooks ?? [])
+  }
+
+  async saveBookId (bookId: BookID): Promise<void> {
+    this.validBooks.add(bookId)
+  }
+
+  async removeBookId (bookId: BookID): Promise<void> {
+    this.validBooks.delete(bookId)
+  }
+
+  async isValidBook (bookId: BookID): Promise<boolean> {
+    return this.validBooks.has(bookId)
+  }
+
+  async countValidBooks (): Promise<number> {
+    return this.validBooks.size
   }
 
   async getOrder (order: OrderId): Promise<Record<BookID, number> | false> {
@@ -43,9 +67,30 @@ export class InMemoryOrders implements OrdersData {
 
 export class DatabaseOrders implements OrdersData {
   orders: Collection<{ books: Record<BookID, number> }>
+  // Named valid_books (different from the warehouse's book_names), because the two
+  // services still share a database until V1.4.3.
+  validBooks: Collection<{ _id: BookID }>
 
   constructor (database: Db) {
     this.orders = database.collection<{ books: Record<BookID, number> }>('orders')
+    this.validBooks = database.collection<{ _id: BookID }>('valid_books')
+  }
+
+  async saveBookId (bookId: BookID): Promise<void> {
+    // Upsert, so handling the same event twice is harmless.
+    await this.validBooks.replaceOne({ _id: bookId }, { _id: bookId }, { upsert: true })
+  }
+
+  async removeBookId (bookId: BookID): Promise<void> {
+    await this.validBooks.deleteOne({ _id: bookId })
+  }
+
+  async isValidBook (bookId: BookID): Promise<boolean> {
+    return (await this.validBooks.findOne({ _id: bookId })) !== null
+  }
+
+  async countValidBooks (): Promise<number> {
+    return await this.validBooks.countDocuments()
   }
 
   async getOrder (order: OrderId): Promise<Record<BookID, number> | false> {
@@ -84,5 +129,18 @@ if (import.meta.vitest !== undefined) {
     const [memList, dbList] = await Promise.all([memData.listOrders(), dbData.listOrders()])
     expect(memList.length).toEqual(dbList.length)
     expect(dbList.length).toEqual(1)
+  })
+
+  test('valid book ids can be saved, checked, counted and removed', async () => {
+    for (const data of [new InMemoryOrders(), getOrdersDatabase()]) {
+      await data.saveBookId('book_1')
+      await data.saveBookId('book_1')
+      expect(await data.isValidBook('book_1')).toBe(true)
+      expect(await data.countValidBooks()).toEqual(1)
+
+      await data.removeBookId('book_1')
+      expect(await data.isValidBook('book_1')).toBe(false)
+      expect(await data.countValidBooks()).toEqual(0)
+    }
   })
 }
