@@ -34,7 +34,7 @@ Forward port 8080 (VS Code **Ports** tab), then open:
   **Queues** tab one queue per API.
 
 Everything is served from port 8080. nginx sends `/` to the front-end,
-`/api/warehouse/` and `/api/fulfil/` to the warehouse API, `/api/order` to the orders
+`/api/warehouse` and `/api/fulfil/` to the warehouse API, `/api/order` to the orders
 API, `/api/docs` to the docs service, and the rest of `/api/` to the books API.
 
 The APIs wait for RabbitMQ to pass its health check before they start, so the first
@@ -47,7 +47,7 @@ npm run test:ci
 ```
 
 `npm run test:ci` generates the spec, routes and client once (`npm run generate`), then
-runs each project's tests: 54 tests in 18 files (books 15, warehouse 27, orders 11,
+runs each project's tests: 66 tests in 21 files (books 21, warehouse 33, orders 11,
 docs 1). Each API test file starts its own in-memory MongoDB, so the tests don't need
 `docker compose` running and never touch your real data. Generating the client takes
 a few minutes. The root `lint` and `check-types` scripts also generate once first.
@@ -85,6 +85,19 @@ PUT /api/fulfil/65f1c0ffee1234567890abce
 
 Response: `201 Created`. A follow-up `GET /api/warehouse/...` now reports `4`.
 
+Every book's total across all shelves:
+
+```
+GET /api/warehouse
+```
+
+```json
+{ "65f1c0ffee1234567890abcd": 4 }
+```
+
+The book list (`POST /api/books/list`) and book details (`GET /api/books/{id}`) include
+each book's `stock`, from books' own copy of these totals.
+
 ## Project layout
 
 The repo is a monorepo: each API is its own Node project in a sub-folder, with its
@@ -121,6 +134,8 @@ They do different jobs. Only the root file is what the site runs from.
   gets slower as the catalogue grows.
 - The cache is stored inside the nginx container, so it is empty after a rebuild.
   Requests then start at `MISS` until it warms up again.
+- The stock in the book list and book details is cached by nginx for up to 60
+  seconds, so a stock change can take a minute to show there.
 - Each API compiles its TypeScript when it starts (`npx tsx`), so after a restart it
   takes up to about 30 seconds to answer. Until then nginx returns `502`.
 - Events are published after the database change succeeds, but not in the same
@@ -308,3 +323,31 @@ book events and orders' to `BookAdded` and `BookRemoved`. A new book could be st
 ordered and fulfilled; made-up ids got 404 and 400; after deleting the book both
 services rejected it. With both copies wiped, restarting warehouse and orders logged
 `initial sync: copied 2 books`, and the same books could be stocked and ordered again.
+
+### V1.4.2
+
+Stock events: books keeps its own copy of each book's total stock and shows it.
+
+- warehouse publishes `BookStocked` with the book's new total across all shelves,
+  after copies are put on a shelf and, for each book in the order, after an order is
+  fulfilled. A rejected shelving or a failed fulfilment publishes nothing.
+- Because `BookStocked` now covers fulfilment too, `OrderFulfilled` only carries the
+  order id (it is used in V1.4.3).
+- books keeps the totals in a new `stock_levels` collection, separate from the book
+  documents because updating a book replaces its whole document. Deleting a book also
+  deletes its stock record.
+- The book list and book details now return `stock` (0 for a book with no stock
+  record), as the new `BookWithStock` type in Swagger. The type for creating a book is
+  unchanged, so `stock` can't be sent when adding a book.
+- New `GET /warehouse`: every book's total. books uses it for its initial stock sync:
+  on startup, if its stock copy is empty, it fetches the totals once.
+- `nginx.conf`: book details are cached for 60 seconds instead of 5 minutes, so the
+  stock shown is at most a minute old. The warehouse route lost its trailing slash so
+  `GET /api/warehouse` reaches the warehouse.
+- 12 new tests, 66 in total.
+
+Checked with `docker compose up`: books' queue is bound to `BookStocked`. A new book's
+stock went from 0, to 5 after putting 3 and 2 copies on two shelves, to 3 after
+fulfilling an order for 2. With books' stock copy wiped, restarting books logged
+`initial sync: copied the stock of 7 books` and the stock was back. Swagger lists
+`GET /warehouse` and the storefront still works.

@@ -1,11 +1,14 @@
 import { z } from 'zod'
 import { getBookDatabase, type BookDatabaseAccessor } from '../database_access'
 import { type BookID, type Book } from '../../../adapter/assignment-2'
+import { type BookWithStock } from '../../../shared/documented_types'
+import { getStockLevels } from './stock'
 import { type ZodRouter } from 'koa-zod-router'
 import { ObjectId } from 'mongodb'
 import { generateId, seedBookDatabase } from '../../database_test_utilities'
 
-async function getBook (id: BookID, { books }: BookDatabaseAccessor): Promise<Book | false> {
+async function getBook (id: BookID, accessor: BookDatabaseAccessor): Promise<BookWithStock | false> {
+  const { books } = accessor
   if (id.length !== 24) {
     console.error('Failed with id: ', id)
     return false
@@ -22,7 +25,9 @@ async function getBook (id: BookID, { books }: BookDatabaseAccessor): Promise<Bo
     price: result.price,
     image: result.image
   }
-  return book
+  // Add the stock from books' own copy (kept up to date by BookStocked events)
+  const stock = await getStockLevels(accessor, [id])
+  return { ...book, stock: stock[id] }
 }
 
 export default function getBookRoute (router: ZodRouter, books: BookDatabaseAccessor): void {

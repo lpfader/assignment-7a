@@ -3,6 +3,7 @@ import { type ZodRouter } from 'koa-zod-router'
 import { ObjectId } from 'mongodb'
 import { type BookDatabaseAccessor } from '../database_access'
 import { type EventBus } from '../../../shared/events'
+import { removeStockLevel } from './stock'
 
 export default function deleteBook (router: ZodRouter, books: BookDatabaseAccessor, events: EventBus): void {
   router.register({
@@ -20,6 +21,7 @@ export default function deleteBook (router: ZodRouter, books: BookDatabaseAccess
       const objectId = ObjectId.createFromHexString(id)
       const result = await bookCollection.deleteOne({ _id: { $eq: objectId } })
       if (result.deletedCount === 1) {
+        await removeStockLevel(books, id)
         // Only after the delete succeeded: tell the other services.
         await events.publish('BookRemoved', { id })
         ctx.body = {}

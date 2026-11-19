@@ -5,9 +5,23 @@ import { placeBooksOnShelf, UnknownBookError } from './place_on_shelf'
 import { fulfilOrder } from './fulfil_order'
 import { type ParameterizedContext, type DefaultContext, type Request as KoaRequest } from 'koa'
 import { type AppWarehouseDatabaseState } from './warehouse_database'
+import { type AppEventsState } from '../../shared/events'
+import { publishStockLevels } from './stock_events'
+
+type WarehouseContext = ParameterizedContext<AppWarehouseDatabaseState & AppEventsState, DefaultContext>
 
 @Route('warehouse')
 export class WarehouseRoutes extends Controller {
+  /**
+   * Every book's total copies across all shelves. Used by books for its initial
+   * stock sync; after that, books gets stock changes from BookStocked events.
+   */
+  @Get()
+  public async getStockTotals (@Request() request: KoaRequest): Promise<Record<BookID, number>> {
+    const ctx: WarehouseContext = request.ctx
+    return await ctx.state.warehouse.getAllTotals()
+  }
+
   /**
    * Find the shelves that have copies of the book, and how
    * many copies each shelf has
@@ -36,10 +50,12 @@ export class WarehouseRoutes extends Controller {
       @Request() request: KoaRequest,
       @Res() unknownBook: TsoaResponse<404, string, { 'Content-Type': 'text/plain' }>
   ): Promise<void> {
-    const ctx: ParameterizedContext<AppWarehouseDatabaseState, DefaultContext> = request.ctx
+    const ctx: WarehouseContext = request.ctx
     this.setStatus(201)
     try {
       await placeBooksOnShelf(ctx.state.warehouse, book, number, shelf)
+      // Only after the stock was saved: tell books the new total.
+      await publishStockLevels(ctx.state.events, ctx.state.warehouse, [book])
     } catch (e) {
       if (e instanceof UnknownBookError) {
         // 404: the book in the URL doesn't exist (as far as the warehouse knows)
@@ -65,10 +81,12 @@ export class FulfilOrderRoutes extends Controller {
       @BodyProp('booksFulfilled') booksFulfilled: FulfilledBooks,
       @Request() request: KoaRequest
   ): Promise<void> {
-    const ctx: ParameterizedContext<AppWarehouseDatabaseState, DefaultContext> = request.ctx
+    const ctx: WarehouseContext = request.ctx
     this.setStatus(201)
     try {
       await fulfilOrder(ctx.state.warehouse, order, booksFulfilled)
+      // Only after the copies came off the shelves: tell books each book's new total.
+      await publishStockLevels(ctx.state.events, ctx.state.warehouse, booksFulfilled.map(({ book }) => book))
       this.setStatus(201)
     } catch (e) {
       this.setStatus(500)

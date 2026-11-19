@@ -1,6 +1,6 @@
 import type * as koa from 'koa'
 import { Controller, Route, Request, Body, Post } from 'tsoa'
-import { type BookID, type Book, type Filter } from '../../../shared/documented_types'
+import { type BookID, type Book, type BookWithStock, type Filter } from '../../../shared/documented_types'
 import { type AppBookDatabaseState } from '../database_access'
 import { type AppEventsState } from '../../../shared/events'
 import listBooks from './list'
@@ -9,7 +9,7 @@ import createOrUpdateBook from './create_or_update'
 @Route('books')
 export class BooksRoutes extends Controller {
   @Post('list')
-  public async listBooks (@Body() filters: Filter[], @Request() request: koa.Request): Promise<Book[]> {
+  public async listBooks (@Body() filters: Filter[], @Request() request: koa.Request): Promise<BookWithStock[]> {
     const ctx: koa.ParameterizedContext<AppBookDatabaseState, koa.DefaultContext> = request.ctx
     return await listBooks(ctx.state.books, filters)
   }

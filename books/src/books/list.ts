@@ -1,5 +1,7 @@
 import { type Book, type Filter } from '../../../adapter/assignment-4'
 import { type BookDatabaseAccessor } from '../database_access'
+import { type BookWithStock } from '../../../shared/documented_types'
+import { getStockLevels } from './stock'
 
 // Escape regex metacharacters so search text is matched literally. Without
 // this, input like "(" builds an invalid regex and mongo throws.
@@ -7,7 +9,7 @@ function escapeRegex (text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-export default async function listBooks (books: BookDatabaseAccessor, filters: Filter[]): Promise<Book[]> {
+export default async function listBooks (books: BookDatabaseAccessor, filters: Filter[]): Promise<BookWithStock[]> {
   const { books: bookCollection } = books
 
   const validFilters =
@@ -60,5 +62,7 @@ export default async function listBooks (books: BookDatabaseAccessor, filters: F
     })
     .toArray()
 
-  return bookList
+  // Add each book's stock from books' own copy (kept up to date by BookStocked events)
+  const stock = await getStockLevels(books, bookList.map((book) => book.id ?? ''))
+  return bookList.map((book) => ({ ...book, stock: stock[book.id ?? ''] }))
 }

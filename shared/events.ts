@@ -13,12 +13,15 @@ export interface Events {
   BookUpdated: { book: Book & { id: BookID } }
   /** books: a book was deleted */
   BookRemoved: { id: BookID }
-  /** warehouse: copies were put on a shelf; the book's new total across all shelves */
+  /**
+   * warehouse: a book's stock changed, because copies were put on a shelf or taken
+   * off for an order; its new total across all shelves
+   */
   BookStocked: { book: BookID, totalStock: number }
   /** orders: an order was placed, with the number of copies of each book */
   OrderPlaced: { orderId: OrderId, books: Record<BookID, number> }
-  /** warehouse: an order was fulfilled; the new total stock of each book in it */
-  OrderFulfilled: { orderId: OrderId, totalStock: Record<BookID, number> }
+  /** warehouse: an order was fulfilled (the stock changes are sent as BookStocked) */
+  OrderFulfilled: { orderId: OrderId }
 }
 
 export type EventName = keyof Events

@@ -63,6 +63,17 @@ export class DatabaseWarehouse implements WarehouseData {
     return copies
   }
 
+  async getAllTotals (): Promise<Record<BookID, number>> {
+    const totals: Record<BookID, number> = {}
+    const sums = this.accessor.books.aggregate<{ _id: BookID, total: number }>([
+      { $group: { _id: '$book', total: { $sum: '$count' } } }
+    ])
+    for await (const { _id, total } of sums) {
+      totals[_id] = total
+    }
+    return totals
+  }
+
   async getOrder (order: OrderId): Promise<Record<BookID, number> | false> {
     const result = await this.accessor.orders.findOne({ _id: ObjectId.createFromHexString(order) })
     return result !== null ? result.books : false
@@ -155,6 +166,16 @@ if (import.meta.vitest !== undefined) {
     expect(dbResult.shelf_1).toEqual(5)
     expect(memResult.shelf_2).toEqual(dbResult.shelf_2)
     expect(dbResult.shelf_2).toEqual(3)
+  })
+
+  test('getting the total copies of every book across all shelves', async () => {
+    const seed = { books: { book_1: { shelf_1: 5, shelf_2: 3 }, book_2: { shelf_1: 1 } }, orders: {} }
+    const db = await getWarehouseDatabase()
+    await seedWarehouseDatabase(db, seed)
+
+    for (const data of [new InMemoryWarehouse(seed), new DatabaseWarehouse(db)]) {
+      expect(await data.getAllTotals()).toEqual({ book_1: 8, book_2: 1 })
+    }
   })
 
   test('book names can be saved, renamed, read, counted and removed', async () => {

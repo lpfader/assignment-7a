@@ -7,6 +7,8 @@ export interface WarehouseData {
   placeBookOnShelf: (bookId: BookID, shelf: ShelfId, count: number) => Promise<void>
   getCopiesOnShelf: (bookId: BookID, shelf: ShelfId) => Promise<number>
   getCopies: (bookId: BookID) => Promise<Record<ShelfId, number>>
+  // Every book's total copies across all shelves
+  getAllTotals: () => Promise<Record<BookID, number>>
   getOrder: (order: OrderId) => Promise<Record<BookID, number> | false>
   placeOrder: (books: Record<BookID, number>) => Promise<OrderId>
   listOrders: () => Promise<Array<{ orderId: OrderId, books: Record<BookID, number> }>>
@@ -65,6 +67,14 @@ export class InMemoryWarehouse implements WarehouseData {
   async getCopies (bookId: string): Promise<Record<ShelfId, number>> {
     const book = this.books[bookId] ?? {}
     return book
+  }
+
+  async getAllTotals (): Promise<Record<BookID, number>> {
+    const totals: Record<BookID, number> = {}
+    for (const book of Object.keys(this.books)) {
+      totals[book] = Object.values(this.books[book]).reduce((sum, count) => sum + count, 0)
+    }
+    return totals
   }
 
   async getOrder (order: OrderId): Promise<Record<BookID, number> | false> {

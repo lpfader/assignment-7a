@@ -50,6 +50,15 @@ export interface Book {
   image: string
 }
 
+/**
+ * A book as the books API returns it, with its stock: the total number of copies on
+ * all the warehouse's shelves. books keeps its own copy of this, from the warehouse's
+ * BookStocked events.
+ */
+export interface BookWithStock extends Book {
+  stock: number
+}
+
 export interface Filter {
   from?: number
   to?: number

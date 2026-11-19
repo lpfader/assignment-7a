@@ -9,6 +9,7 @@ import bodyParser from 'koa-bodyparser'
 import { type Server, type IncomingMessage, type ServerResponse } from 'http'
 import { type AppBookDatabaseState, getBookDatabase } from './src/database_access'
 import { type AppEventsState, type EventBus, InMemoryEventBus } from '../shared/events'
+import { subscribeToStockEvents } from './src/books/stock'
 
 export default async function (
   port?: number,
@@ -53,6 +54,8 @@ export default async function (
   app.use(koaRouter.routes())
 
   // The Swagger docs moved to the docs service in V1.2.3 (docs/server.ts).
+  await subscribeToStockEvents(events, state.books)
+
   // Event subscriptions are registered above this line; then start receiving.
   await events.start()
 

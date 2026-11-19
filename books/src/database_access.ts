@@ -16,6 +16,10 @@ export const client = new MongoClient(uri)
 export interface BookDatabaseAccessor {
   database: Db
   books: Collection<Book>
+  // books' own copy of each book's total stock, from the warehouse's BookStocked
+  // events. A separate collection, because updating a book replaces its whole
+  // document and would wipe a stock field stored on it.
+  stockLevels: Collection<{ _id: string, totalStock: number }>
 }
 
 export interface AppBookDatabaseState {
@@ -30,10 +34,12 @@ export function getBookDatabase (dbName?: string): BookDatabaseAccessor {
         .toString()
   )
   const books = database.collection<Book>('books')
+  const stockLevels = database.collection<{ _id: string, totalStock: number }>('stock_levels')
 
   return {
     database,
-    books
+    books,
+    stockLevels
   }
 }
 
